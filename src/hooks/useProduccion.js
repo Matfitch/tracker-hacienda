@@ -33,11 +33,19 @@ export function useProduccion(mesKey) {
   useEffect(() => { cargar(); }, [cargar]);
 
   const guardarDia = async (fecha, manana, tarde) => {
+    // Se actualiza el estado y se guarda en IndexedDB SIEMPRE primero,
+    // sin importar si hay red o no. Esto es lo que hace que offline funcione.
     setRegistros((prev) => ({ ...prev, [fecha]: { manana, tarde } }));
-    const { error } = await supabase
-      .from('produccion_leche')
-      .upsert({ fecha, manana, tarde }, { onConflict: 'fecha' });
-    if (error) {
+    await db.produccion.put({ fecha, manana, tarde });
+
+    try {
+      const { error } = await supabase
+        .from('produccion_leche')
+        .upsert({ fecha, manana, tarde }, { onConflict: 'fecha' });
+      if (error) throw error;
+    } catch (e) {
+      // Cubre tanto errores que Supabase devuelve como fallas de red que
+      // lanzan una excepción (sin conexión, DNS, etc.)
       await db.pendientes.add({ tipo: 'produccion', fecha, manana, tarde });
     }
   };
