@@ -11,8 +11,8 @@ export default defineConfig({
       // Precarga el "app shell" (HTML, JS, CSS, íconos) para que abra sin red
       includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'Tracker Hacienda',
-        short_name: 'Hacienda',
+        name: 'ISOAGROCAMP',
+      short_name: 'ISOAGROCAMP',
         description: 'Seguimiento de producción de leche y manejo de hacienda',
         theme_color: '#863bff',
         background_color: '#ffffff',
