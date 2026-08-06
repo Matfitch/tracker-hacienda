@@ -387,6 +387,7 @@ export default function ProduccionLeche() {
                 fontSize: "1.05rem",
                 margin: 0,
                 textTransform: "capitalize",
+                color: "#2F4B3C",
               }}
             >
               {nombreMes(mesKey)}
@@ -593,7 +594,7 @@ export default function ProduccionLeche() {
               border: "1px solid #E7DFC9",
             }}
           >
-            <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.75rem" }}>
+            <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.75rem", color: "#2F4B3C" }}>
               Últimos registros
             </h2>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
