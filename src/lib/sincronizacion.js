@@ -2,9 +2,8 @@ import { supabase } from './supabaseClient';
 import { db } from './indexedDb';
 
 let sincronizando = false;
+const EVENTO_SYNC = 'hacienda:datos-actualizados';
 
-// Intenta reenviar todos los registros que quedaron pendientes por falta de red.
-// Se puede llamar varias veces seguidas sin problema (evita ejecuciones duplicadas).
 export async function sincronizarPendientes() {
   if (sincronizando) return { enviados: 0, fallidos: 0 };
   if (!navigator.onLine) return { enviados: 0, fallidos: 0 };
@@ -31,15 +30,22 @@ export async function sincronizarPendientes() {
             .from('metas_mensuales')
             .upsert({ mes: item.mes, litros: item.litros });
           if (error) throw error;
+        } else if (item.tipo === 'bovino') {
+          const { error } = await supabase.from('bovinos').upsert(item.registro);
+          if (error) throw error;
+        } else if (item.tipo === 'aplicacion') {
+          const { error } = await supabase.from('aplicaciones_protocolo').upsert(item.registro);
+          if (error) throw error;
+        } else if (item.tipo === 'parto') {
+          const { error } = await supabase.from('partos').upsert(item.registro);
+          if (error) throw error;
         } else {
-          // Tipo desconocido: lo descartamos para no bloquear la cola indefinidamente
           console.warn('Pendiente con tipo desconocido, se descarta:', item);
         }
 
         await db.pendientes.delete(item.id);
         enviados++;
       } catch (e) {
-        // Se queda en la cola para reintentarlo en el próximo intento de sincronización
         fallidos++;
       }
     }
@@ -47,12 +53,23 @@ export async function sincronizarPendientes() {
     sincronizando = false;
   }
 
+  window.dispatchEvent(new CustomEvent(EVENTO_SYNC, { detail: { enviados, fallidos } }));
   return { enviados, fallidos };
 }
 
-// Registra los listeners una sola vez para toda la app:
-// - al recuperar conexión
-// - al abrir/enfocar la app (por si se perdió el evento "online")
+export function alRecuperarDatos(callback) {
+  const handler = () => callback();
+  window.addEventListener(EVENTO_SYNC, handler);
+  window.addEventListener('online', handler);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && navigator.onLine) callback();
+  });
+  return () => {
+    window.removeEventListener(EVENTO_SYNC, handler);
+    window.removeEventListener('online', handler);
+  };
+}
+
 let inicializado = false;
 export function iniciarSincronizacionAutomatica() {
   if (inicializado) return;
@@ -68,7 +85,6 @@ export function iniciarSincronizacionAutomatica() {
     }
   });
 
-  // Intento inicial por si la app se abrió ya con conexión y había pendientes de antes
   if (navigator.onLine) {
     sincronizarPendientes();
   }

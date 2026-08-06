@@ -14,3 +14,19 @@ db.version(2).stores({
   metas: 'mes',
   pendientes: '++id',
 });
+db.version(3).stores({
+  produccion: 'fecha',
+  metas: 'mes',
+  bovinos: 'id, codigo',
+  aplicaciones: 'id, bovino_id',
+  pendientes: '++id',
+});
+ 
+db.version(4).stores({
+  produccion: 'fecha',
+  metas: 'mes',
+  bovinos: 'id, codigo, madre_id',
+  aplicaciones: 'id, bovino_id',
+  partos: 'id, madre_id',
+  pendientes: '++id',
+});
