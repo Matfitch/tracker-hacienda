@@ -39,6 +39,15 @@ export async function sincronizarPendientes() {
         } else if (item.tipo === 'parto') {
           const { error } = await supabase.from('partos').upsert(item.registro);
           if (error) throw error;
+        } else if (item.tipo === 'eliminar_bovino') {
+          const { error } = await supabase.from('bovinos').delete().eq('id', item.id);
+          if (error) throw error;
+        } else if (item.tipo === 'eliminar_aplicacion') {
+          const { error } = await supabase.from('aplicaciones_protocolo').delete().eq('id', item.id);
+          if (error) throw error;
+        } else if (item.tipo === 'eliminar_parto') {
+          const { error } = await supabase.from('partos').delete().eq('id', item.id);
+          if (error) throw error;
         } else {
           console.warn('Pendiente con tipo desconocido, se descarta:', item);
         }

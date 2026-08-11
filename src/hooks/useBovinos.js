@@ -45,7 +45,15 @@ export function useBovinos() {
   useEffect(() => alRecuperarDatos(cargar), [cargar]);
 
   const guardarBovino = async (bovino) => {
-    const registro = { ...bovino, id: bovino.id || crypto.randomUUID() };
+    const existente = bovinos.find((b) => b.id === bovino.id);
+    const registro = {
+      ...bovino,
+      id: bovino.id || crypto.randomUUID(),
+      // fecha_ingreso se fija UNA sola vez, al crear el animal, y nunca se
+      // vuelve a tocar — sirve de referencia cuando no se conoce la fecha
+      // real de nacimiento.
+      fecha_ingreso: existente?.fecha_ingreso || bovino.fecha_ingreso || new Date().toISOString().slice(0, 10),
+    };
     setBovinos((prev) => {
       const existe = prev.some((b) => b.id === registro.id);
       return existe ? prev.map((b) => (b.id === registro.id ? registro : b)) : [...prev, registro];
@@ -119,6 +127,39 @@ export function useBovinos() {
     return registroParto;
   };
 
+  const eliminarBovino = async (id) => {
+    setBovinos((prev) => prev.filter((b) => b.id !== id));
+    await db.bovinos.delete(id);
+    try {
+      const { error } = await supabase.from('bovinos').delete().eq('id', id);
+      if (error) throw error;
+    } catch (e) {
+      await db.pendientes.add({ tipo: 'eliminar_bovino', id });
+    }
+  };
+
+  const eliminarAplicacion = async (id) => {
+    setAplicaciones((prev) => prev.filter((a) => a.id !== id));
+    await db.aplicaciones.delete(id);
+    try {
+      const { error } = await supabase.from('aplicaciones_protocolo').delete().eq('id', id);
+      if (error) throw error;
+    } catch (e) {
+      await db.pendientes.add({ tipo: 'eliminar_aplicacion', id });
+    }
+  };
+
+  const eliminarParto = async (id) => {
+    setPartos((prev) => prev.filter((p) => p.id !== id));
+    await db.partos.delete(id);
+    try {
+      const { error } = await supabase.from('partos').delete().eq('id', id);
+      if (error) throw error;
+    } catch (e) {
+      await db.pendientes.add({ tipo: 'eliminar_parto', id });
+    }
+  };
+
   return {
     bovinos,
     aplicaciones,
@@ -127,6 +168,9 @@ export function useBovinos() {
     guardarBovino,
     registrarAplicacion,
     registrarParto,
+    eliminarBovino,
+    eliminarAplicacion,
+    eliminarParto,
     recargar: cargar,
   };
 }

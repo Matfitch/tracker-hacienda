@@ -19,6 +19,7 @@ const USO_REPRODUCTIVO = [
 ];
 
 function edadTexto(fechaNacimiento) {
+  if (!fechaNacimiento) return "edad desconocida";
   const hoy = new Date();
   const nac = new Date(fechaNacimiento + "T00:00:00");
   const dias = Math.round((hoy - nac) / 86400000);
@@ -62,8 +63,18 @@ const pillBtn = (activo) => ({
 });
 
 export default function Bovinos() {
-  const { bovinos, aplicaciones, partos, cargando, guardarBovino, registrarAplicacion, registrarParto } =
-    useBovinos();
+  const {
+    bovinos,
+    aplicaciones,
+    partos,
+    cargando,
+    guardarBovino,
+    registrarAplicacion,
+    registrarParto,
+    eliminarBovino,
+    eliminarAplicacion,
+    eliminarParto,
+  } = useBovinos();
   const [busqueda, setBusqueda] = useState("");
   const [grupo, setGrupo] = useState("todos");
   const [seleccionado, setSeleccionado] = useState(null);
@@ -98,6 +109,12 @@ export default function Bovinos() {
         onGuardarBovino={guardarBovino}
         onRegistrarAplicacion={registrarAplicacion}
         onRegistrarParto={registrarParto}
+        onEliminarBovino={async (id) => {
+          await eliminarBovino(id);
+          setSeleccionado(null);
+        }}
+        onEliminarAplicacion={eliminarAplicacion}
+        onEliminarParto={eliminarParto}
       />
     );
   }
@@ -183,6 +200,7 @@ function FormNuevoAnimal({ onCancelar, onGuardar }) {
   const [codigo, setCodigo] = useState("");
   const [nombre, setNombre] = useState("");
   const [fechaNacimiento, setFechaNacimiento] = useState(hoyISO());
+  const [fechaDesconocida, setFechaDesconocida] = useState(false);
 
   return (
     <div style={{ background: "#FFFDF7", border: "1px solid #E7DFC9", borderRadius: 14, padding: "1.1rem", marginTop: "0.9rem", display: "flex", flexDirection: "column", gap: "0.7rem" }}>
@@ -206,16 +224,47 @@ function FormNuevoAnimal({ onCancelar, onGuardar }) {
       </div>
       <div>
         <label style={labelStyle}>Fecha de nacimiento</label>
-        <input type="date" style={inputStyle} value={fechaNacimiento} onChange={(e) => setFechaNacimiento(e.target.value)} />
+        <input
+          type="date"
+          style={{ ...inputStyle, opacity: fechaDesconocida ? 0.4 : 1 }}
+          value={fechaNacimiento}
+          disabled={fechaDesconocida}
+          onChange={(e) => setFechaNacimiento(e.target.value)}
+        />
+        <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontFamily: "system-ui, sans-serif", fontSize: "0.78rem", color: "#6B4A32", marginTop: "0.4rem", cursor: "pointer" }}>
+          <input type="checkbox" checked={fechaDesconocida} onChange={(e) => setFechaDesconocida(e.target.checked)} />
+          No se conoce la fecha de nacimiento
+        </label>
       </div>
       <div style={{ display: "flex", gap: "0.6rem", marginTop: "0.3rem" }}>
         <button onClick={onCancelar} style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", padding: "0.55rem", borderRadius: 8, border: "1px solid #E7DFC9", background: "transparent", color: "#6B4A32", cursor: "pointer" }}>
           Cancelar
         </button>
         <button
-          disabled={!codigo || !fechaNacimiento}
-          onClick={() => onGuardar({ codigo, nombre, categoria, sexo: infoCategoria(categoria).sexo, fecha_nacimiento: fechaNacimiento, estado: "activo", uso_reproductivo: "sin_definir" })}
-          style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", fontWeight: 600, padding: "0.55rem", borderRadius: 8, border: "none", background: !codigo || !fechaNacimiento ? "#C9C2AC" : "#2F4B3C", color: "#F5F0E3", cursor: !codigo || !fechaNacimiento ? "not-allowed" : "pointer" }}
+          disabled={!codigo || (!fechaDesconocida && !fechaNacimiento)}
+          onClick={() =>
+            onGuardar({
+              codigo,
+              nombre,
+              categoria,
+              sexo: infoCategoria(categoria).sexo,
+              fecha_nacimiento: fechaDesconocida ? null : fechaNacimiento,
+              estado: "activo",
+              uso_reproductivo: "sin_definir",
+            })
+          }
+          style={{
+            flex: 1,
+            fontFamily: "system-ui, sans-serif",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            padding: "0.55rem",
+            borderRadius: 8,
+            border: "none",
+            background: !codigo || (!fechaDesconocida && !fechaNacimiento) ? "#C9C2AC" : "#2F4B3C",
+            color: "#F5F0E3",
+            cursor: !codigo || (!fechaDesconocida && !fechaNacimiento) ? "not-allowed" : "pointer",
+          }}
         >
           Guardar
         </button>
@@ -224,7 +273,7 @@ function FormNuevoAnimal({ onCancelar, onGuardar }) {
   );
 }
 
-function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, onGuardarBovino, onRegistrarAplicacion, onRegistrarParto }) {
+function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, onGuardarBovino, onRegistrarAplicacion, onRegistrarParto, onEliminarBovino, onEliminarAplicacion, onEliminarParto }) {
   const eventos = calcularEventos(bovino, aplicaciones);
   const historialAplicaciones = aplicaciones.filter((a) => a.bovino_id === bovino.id).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
   const historialPartos = partos.filter((p) => p.madre_id === bovino.id).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
@@ -237,6 +286,8 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
   const [editandoReproduccion, setEditandoReproduccion] = useState(false);
   const [editandoCategoria, setEditandoCategoria] = useState(false);
   const [registrandoParto, setRegistrandoParto] = useState(false);
+  const [editandoDatos, setEditandoDatos] = useState(false);
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
 
   const sugerirAscensoAVaca = info.value === "vacona" && !!bovino.fecha_ultimo_parto;
   const puedeReproducir = (info.grupo === "joven" || info.grupo === "adulto") && info.sexo === "hembra";
@@ -249,7 +300,7 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
         </button>
         <h1 style={{ fontSize: "1.4rem", fontWeight: 600, margin: 0, color: "#F5F0E3" }}>{bovino.nombre || bovino.codigo}</h1>
         <p style={{ margin: "0.2rem 0 0", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#B8CBB9" }}>
-          {bovino.codigo} · {info.label} · nació {bovino.fecha_nacimiento}
+          {bovino.codigo} · {info.label} · {bovino.fecha_nacimiento ? `nació ${bovino.fecha_nacimiento}` : "fecha de nacimiento desconocida"}
         </p>
       </header>
 
@@ -284,6 +335,17 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
             </div>
           )}
 
+          {!bovino.fecha_nacimiento && !editandoDatos && (
+            <div style={{ marginTop: "0.7rem", paddingTop: "0.6rem", borderTop: "1px solid #F1EBD8" }}>
+              <label style={labelStyle}>¿Ya sabes la fecha de nacimiento? Complétala aquí:</label>
+              <input
+                type="date"
+                style={inputStyle}
+                onChange={(e) => e.target.value && onGuardarBovino({ ...bovino, fecha_nacimiento: e.target.value })}
+              />
+            </div>
+          )}
+
           {(info.grupo === "joven") && (
             <div style={{ marginTop: "0.8rem", paddingTop: "0.7rem", borderTop: "1px solid #F1EBD8" }}>
               <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.75rem", color: "#6B4A32", marginBottom: "0.35rem" }}>
@@ -311,6 +373,26 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
                 ))}
               </div>
             </div>
+          )}
+        </section>
+
+        {/* Datos básicos: editar código, nombre, fecha de nacimiento */}
+        <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1rem 1.25rem", marginTop: "0.8rem", border: "1px solid #E7DFC9" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h2 style={{ fontSize: "0.95rem", margin: 0, color: "#2F4B3C" }}>Datos básicos</h2>
+            <button onClick={() => setEditandoDatos((v) => !v)} style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", color: "#6B4A32", background: "#F4EEDB", border: "1px dashed #C68A3E", borderRadius: 6, padding: "0.25rem 0.55rem", cursor: "pointer" }}>
+              {editandoDatos ? "Cerrar" : "Editar ✎"}
+            </button>
+          </div>
+
+          {!editandoDatos ? (
+            <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", color: "#4A4132", lineHeight: 1.7, marginTop: "0.5rem" }}>
+              <div>Código: {bovino.codigo}</div>
+              <div>Nombre: {bovino.nombre || "—"}</div>
+              <div>Nacimiento: {bovino.fecha_nacimiento || "desconocida"}</div>
+            </div>
+          ) : (
+            <DatosBasicosForm bovino={bovino} onGuardar={async (cambios) => { await onGuardarBovino({ ...bovino, ...cambios }); setEditandoDatos(false); }} />
           )}
         </section>
 
@@ -441,6 +523,12 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
                         ) : (
                           <span style={{ color: "#A39A82", fontSize: "0.72rem" }}>sin registrar</span>
                         )}
+                        <button
+                          onClick={() => { if (window.confirm("¿Eliminar este parto?")) onEliminarParto(p.id); }}
+                          style={{ background: "none", border: "none", color: "#B23A2E", cursor: "pointer", fontSize: "0.72rem", fontFamily: "system-ui, sans-serif", marginLeft: "0.5rem" }}
+                        >
+                          Eliminar
+                        </button>
                       </div>
                     );
                   })}
@@ -451,22 +539,86 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
         )}
 
         {/* Historial de aplicaciones */}
-        <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1.1rem 1.25rem", marginTop: "1rem", marginBottom: "1rem", border: "1px solid #E7DFC9" }}>
+        <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1.1rem 1.25rem", marginTop: "1rem", border: "1px solid #E7DFC9" }}>
           <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.75rem", color: "#2F4B3C" }}>Historial de aplicaciones</h2>
           {historialAplicaciones.length === 0 && <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", color: "#7A7160" }}>Sin aplicaciones registradas todavía.</p>}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             {historialAplicaciones.map((a) => (
-              <div key={a.id} style={{ display: "flex", justifyContent: "space-between", fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", padding: "0.4rem 0", borderBottom: "1px solid #F1EBD8" }}>
-                <span style={{ color: "#7A7160" }}>{a.fecha} · {a.etapa}</span>
-                <span style={{ color: "#2A241C", textAlign: "right" }}>
-                  {a.medicamento || "—"}
-                  {a.notas && <div style={{ fontSize: "0.72rem", color: "#A39A82" }}>{a.notas}</div>}
-                </span>
+              <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", padding: "0.4rem 0", borderBottom: "1px solid #F1EBD8" }}>
+                <div>
+                  <span style={{ color: "#7A7160" }}>{a.fecha} · {a.etapa}</span>
+                  <div style={{ color: "#2A241C" }}>
+                    {a.medicamento || "—"}
+                    {a.notas && <div style={{ fontSize: "0.72rem", color: "#A39A82" }}>{a.notas}</div>}
+                  </div>
+                </div>
+                <button
+                  onClick={() => { if (window.confirm("¿Eliminar esta aplicación?")) onEliminarAplicacion(a.id); }}
+                  style={{ background: "none", border: "none", color: "#B23A2E", cursor: "pointer", fontSize: "0.72rem", fontFamily: "system-ui, sans-serif", flexShrink: 0, marginLeft: "0.5rem" }}
+                >
+                  Eliminar
+                </button>
               </div>
             ))}
           </div>
         </section>
+
+        {/* Eliminar animal */}
+        <section style={{ marginTop: "1rem", marginBottom: "1rem" }}>
+          {!confirmandoEliminar ? (
+            <button
+              onClick={() => setConfirmandoEliminar(true)}
+              style={{ width: "100%", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#B23A2E", background: "transparent", border: "1px solid #E2B4AC", borderRadius: 10, padding: "0.6rem", cursor: "pointer" }}
+            >
+              Eliminar este animal
+            </button>
+          ) : (
+            <div style={{ background: "#FBEAE7", border: "1px solid #B23A2E", borderRadius: 10, padding: "0.9rem", fontFamily: "system-ui, sans-serif" }}>
+              <p style={{ fontSize: "0.82rem", color: "#7A2A20", margin: "0 0 0.7rem" }}>
+                Esto elimina al animal y todo su historial de aplicaciones y partos. No se puede deshacer.
+              </p>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button onClick={() => setConfirmandoEliminar(false)} style={{ flex: 1, fontSize: "0.8rem", padding: "0.5rem", borderRadius: 8, border: "1px solid #B23A2E", background: "transparent", color: "#B23A2E", cursor: "pointer" }}>
+                  Cancelar
+                </button>
+                <button onClick={() => onEliminarBovino(bovino.id)} style={{ flex: 1, fontSize: "0.8rem", fontWeight: 600, padding: "0.5rem", borderRadius: 8, border: "none", background: "#B23A2E", color: "#FFFDF7", cursor: "pointer" }}>
+                  Sí, eliminar
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
       </main>
+    </div>
+  );
+}
+
+function DatosBasicosForm({ bovino, onGuardar }) {
+  const [codigo, setCodigo] = useState(bovino.codigo || "");
+  const [nombre, setNombre] = useState(bovino.nombre || "");
+  const [fechaNacimiento, setFechaNacimiento] = useState(bovino.fecha_nacimiento || "");
+
+  return (
+    <div style={{ marginTop: "0.6rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+      <div>
+        <label style={labelStyle}>Código</label>
+        <input style={inputStyle} value={codigo} onChange={(e) => setCodigo(e.target.value)} />
+      </div>
+      <div>
+        <label style={labelStyle}>Nombre</label>
+        <input style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} />
+      </div>
+      <div>
+        <label style={labelStyle}>Fecha de nacimiento</label>
+        <input type="date" style={inputStyle} value={fechaNacimiento} onChange={(e) => setFechaNacimiento(e.target.value)} />
+      </div>
+      <button
+        disabled={!codigo}
+        onClick={() => onGuardar({ codigo, nombre, fecha_nacimiento: fechaNacimiento || null })}
+        style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", fontWeight: 600, padding: "0.55rem", borderRadius: 8, border: "none", background: !codigo ? "#C9C2AC" : "#2F4B3C", color: "#F5F0E3", cursor: !codigo ? "not-allowed" : "pointer" }}
+      >
+        Guardar cambios
+      </button>
     </div>
   );
 }
