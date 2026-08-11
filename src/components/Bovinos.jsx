@@ -201,6 +201,28 @@ function FormNuevoAnimal({ onCancelar, onGuardar }) {
   const [nombre, setNombre] = useState("");
   const [fechaNacimiento, setFechaNacimiento] = useState(hoyISO());
   const [fechaDesconocida, setFechaDesconocida] = useState(false);
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  const guardar = async () => {
+    setError("");
+    setGuardando(true);
+    try {
+      await onGuardar({
+        codigo,
+        nombre,
+        categoria,
+        sexo: infoCategoria(categoria).sexo,
+        fecha_nacimiento: fechaDesconocida ? null : fechaNacimiento,
+        estado: "activo",
+        uso_reproductivo: "sin_definir",
+      });
+    } catch (e) {
+      setError(e.message || "No se pudo guardar.");
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   return (
     <div style={{ background: "#FFFDF7", border: "1px solid #E7DFC9", borderRadius: 14, padding: "1.1rem", marginTop: "0.9rem", display: "flex", flexDirection: "column", gap: "0.7rem" }}>
@@ -236,23 +258,20 @@ function FormNuevoAnimal({ onCancelar, onGuardar }) {
           No se conoce la fecha de nacimiento
         </label>
       </div>
+
+      {error && (
+        <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.78rem", color: "#B23A2E", background: "#FBEAE7", border: "1px solid #E2B4AC", borderRadius: 8, padding: "0.5rem 0.7rem" }}>
+          {error}
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: "0.6rem", marginTop: "0.3rem" }}>
         <button onClick={onCancelar} style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", padding: "0.55rem", borderRadius: 8, border: "1px solid #E7DFC9", background: "transparent", color: "#6B4A32", cursor: "pointer" }}>
           Cancelar
         </button>
         <button
-          disabled={!codigo || (!fechaDesconocida && !fechaNacimiento)}
-          onClick={() =>
-            onGuardar({
-              codigo,
-              nombre,
-              categoria,
-              sexo: infoCategoria(categoria).sexo,
-              fecha_nacimiento: fechaDesconocida ? null : fechaNacimiento,
-              estado: "activo",
-              uso_reproductivo: "sin_definir",
-            })
-          }
+          disabled={!codigo || (!fechaDesconocida && !fechaNacimiento) || guardando}
+          onClick={guardar}
           style={{
             flex: 1,
             fontFamily: "system-ui, sans-serif",
@@ -261,12 +280,12 @@ function FormNuevoAnimal({ onCancelar, onGuardar }) {
             padding: "0.55rem",
             borderRadius: 8,
             border: "none",
-            background: !codigo || (!fechaDesconocida && !fechaNacimiento) ? "#C9C2AC" : "#2F4B3C",
+            background: !codigo || (!fechaDesconocida && !fechaNacimiento) || guardando ? "#C9C2AC" : "#2F4B3C",
             color: "#F5F0E3",
-            cursor: !codigo || (!fechaDesconocida && !fechaNacimiento) ? "not-allowed" : "pointer",
+            cursor: !codigo || (!fechaDesconocida && !fechaNacimiento) || guardando ? "not-allowed" : "pointer",
           }}
         >
-          Guardar
+          {guardando ? "Guardando…" : "Guardar"}
         </button>
       </div>
     </div>
@@ -597,6 +616,20 @@ function DatosBasicosForm({ bovino, onGuardar }) {
   const [codigo, setCodigo] = useState(bovino.codigo || "");
   const [nombre, setNombre] = useState(bovino.nombre || "");
   const [fechaNacimiento, setFechaNacimiento] = useState(bovino.fecha_nacimiento || "");
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  const guardar = async () => {
+    setError("");
+    setGuardando(true);
+    try {
+      await onGuardar({ codigo, nombre, fecha_nacimiento: fechaNacimiento || null });
+    } catch (e) {
+      setError(e.message || "No se pudo guardar.");
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   return (
     <div style={{ marginTop: "0.6rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
@@ -612,12 +645,17 @@ function DatosBasicosForm({ bovino, onGuardar }) {
         <label style={labelStyle}>Fecha de nacimiento</label>
         <input type="date" style={inputStyle} value={fechaNacimiento} onChange={(e) => setFechaNacimiento(e.target.value)} />
       </div>
+      {error && (
+        <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.78rem", color: "#B23A2E", background: "#FBEAE7", border: "1px solid #E2B4AC", borderRadius: 8, padding: "0.5rem 0.7rem" }}>
+          {error}
+        </div>
+      )}
       <button
-        disabled={!codigo}
-        onClick={() => onGuardar({ codigo, nombre, fecha_nacimiento: fechaNacimiento || null })}
-        style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", fontWeight: 600, padding: "0.55rem", borderRadius: 8, border: "none", background: !codigo ? "#C9C2AC" : "#2F4B3C", color: "#F5F0E3", cursor: !codigo ? "not-allowed" : "pointer" }}
+        disabled={!codigo || guardando}
+        onClick={guardar}
+        style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", fontWeight: 600, padding: "0.55rem", borderRadius: 8, border: "none", background: !codigo || guardando ? "#C9C2AC" : "#2F4B3C", color: "#F5F0E3", cursor: !codigo || guardando ? "not-allowed" : "pointer" }}
       >
-        Guardar cambios
+        {guardando ? "Guardando…" : "Guardar cambios"}
       </button>
     </div>
   );
@@ -655,6 +693,20 @@ function RegistrarPartoForm({ bovino, onCancelar, onGuardar }) {
   const [crearCria, setCrearCria] = useState(true);
   const [codigoCria, setCodigoCria] = useState("");
   const [nombreCria, setNombreCria] = useState("");
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  const guardar = async () => {
+    setError("");
+    setGuardando(true);
+    try {
+      await onGuardar({ fecha, sexoCria, crearCria, codigoCria, nombreCria });
+    } catch (e) {
+      setError(e.message || "No se pudo registrar el parto.");
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   return (
     <section style={{ background: "#F4EEDB", borderRadius: 14, padding: "1rem 1.1rem", marginTop: "0.8rem", border: "1px solid #C68A3E" }}>
@@ -693,16 +745,22 @@ function RegistrarPartoForm({ bovino, onCancelar, onGuardar }) {
         </>
       )}
 
+      {error && (
+        <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.78rem", color: "#B23A2E", background: "#FBEAE7", border: "1px solid #E2B4AC", borderRadius: 8, padding: "0.5rem 0.7rem", marginBottom: "0.6rem" }}>
+          {error}
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: "0.6rem", marginTop: "0.4rem" }}>
         <button onClick={onCancelar} style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", padding: "0.5rem", borderRadius: 8, border: "1px solid #C68A3E", background: "transparent", color: "#6B4A32", cursor: "pointer" }}>
           Cancelar
         </button>
         <button
-          disabled={crearCria && !codigoCria}
-          onClick={() => onGuardar({ fecha, sexoCria, crearCria, codigoCria, nombreCria })}
-          style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", fontWeight: 600, padding: "0.5rem", borderRadius: 8, border: "none", background: crearCria && !codigoCria ? "#C9C2AC" : "#2F4B3C", color: "#F5F0E3", cursor: crearCria && !codigoCria ? "not-allowed" : "pointer" }}
+          disabled={(crearCria && !codigoCria) || guardando}
+          onClick={guardar}
+          style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", fontWeight: 600, padding: "0.5rem", borderRadius: 8, border: "none", background: (crearCria && !codigoCria) || guardando ? "#C9C2AC" : "#2F4B3C", color: "#F5F0E3", cursor: (crearCria && !codigoCria) || guardando ? "not-allowed" : "pointer" }}
         >
-          Confirmar parto
+          {guardando ? "Guardando…" : "Confirmar parto"}
         </button>
       </div>
     </section>

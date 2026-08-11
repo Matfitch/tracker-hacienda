@@ -46,6 +46,18 @@ export function useBovinos() {
 
   const guardarBovino = async (bovino) => {
     const existente = bovinos.find((b) => b.id === bovino.id);
+
+    // Validación: no permitir un código duplicado (comparando con cualquier
+    // OTRO animal, ignorando mayúsculas/espacios).
+    if (bovino.codigo) {
+      const duplicado = bovinos.find(
+        (b) => b.id !== bovino.id && b.codigo?.trim().toLowerCase() === bovino.codigo.trim().toLowerCase()
+      );
+      if (duplicado) {
+        throw new Error(`Ya existe un animal con el código "${bovino.codigo}" (${duplicado.nombre || duplicado.codigo}).`);
+      }
+    }
+
     const registro = {
       ...bovino,
       id: bovino.id || crypto.randomUUID(),
@@ -64,7 +76,25 @@ export function useBovinos() {
       const { error } = await supabase.from('bovinos').upsert(registro);
       if (error) throw error;
     } catch (e) {
-      await db.pendientes.add({ tipo: 'bovino', registro });
+      if (!navigator.onLine) {
+        // Sin conexión: se guarda localmente y se reintenta más tarde, normal.
+        await db.pendientes.add({ tipo: 'bovino', registro });
+      } else {
+        // Con conexión pero el servidor lo rechazó (ej. código duplicado que
+        // otro dispositivo ya usó) — deshacemos el guardado local y avisamos.
+        if (existente) {
+          setBovinos((prev) => prev.map((b) => (b.id === registro.id ? existente : b)));
+          await db.bovinos.put(existente);
+        } else {
+          setBovinos((prev) => prev.filter((b) => b.id !== registro.id));
+          await db.bovinos.delete(registro.id);
+        }
+        throw new Error(
+          e?.message?.includes('duplicate') || e?.code === '23505'
+            ? `El código "${bovino.codigo}" ya está en uso.`
+            : 'No se pudo guardar el animal. Intenta de nuevo.'
+        );
+      }
     }
     return registro;
   };
