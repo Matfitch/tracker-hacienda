@@ -50,6 +50,7 @@ function puedeGestar(categoria) {
 export const PROTOCOLO_TERNERO = [
   { etapa: 'nacimiento', dia: 0, etiqueta: 'Nacimiento', sugerido: 'Baycox 5% 3ml/10kg + Vigantol ADE 2ml vía oral' },
   { etapa: 'dia30', dia: 30, etiqueta: 'Día 30', sugerido: 'Catosal B12 5ml' },
+  { etapa: 'dia60', dia: 60, etiqueta: 'Día 60', sugerido: 'Catosal B12 5ml' },
   { etapa: 'dia90', dia: 90, etiqueta: 'Día 90', sugerido: 'Catosal B12 5ml' },
   { etapa: 'dia120', dia: 120, etiqueta: 'Destete (día 120)', sugerido: 'Yatren 10-40ml + Catosal B12 10ml' },
   { etapa: 'dia150', dia: 150, etiqueta: 'Día 150', sugerido: 'Catosal B12 10ml' },
@@ -86,15 +87,23 @@ export function calcularEventos(bovino, aplicaciones) {
   }
 
   // --- Trimestral: categorías joven y adulto (vacona/torete/vaca/toro) ---
-  if ((info.grupo === 'joven' || info.grupo === 'adulto') && bovino.fecha_nacimiento) {
-    const edadDias = diasEntre(bovino.fecha_nacimiento);
+  // Si se conoce la fecha de nacimiento, arranca a los 6 meses de vida.
+  // Si NO se conoce (frecuente en animales adultos comprados/heredados),
+  // se usa la fecha en que se registró en la app como punto de partida,
+  // asumiendo que ya está en edad de recibirlo (no se espera otros 6 meses).
+  if ((info.grupo === 'joven' || info.grupo === 'adulto') && (bovino.fecha_nacimiento || bovino.fecha_ingreso)) {
     const ultimaTrimestral = apps
       .filter((a) => a.etapa === 'trimestral')
       .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))[0];
 
-    const proximaTrimestral = ultimaTrimestral
-      ? sumarDias(ultimaTrimestral.fecha, FRECUENCIA_TRIMESTRAL_DIAS)
-      : sumarDias(bovino.fecha_nacimiento, Math.max(EDAD_INICIO_TRIMESTRAL_DIAS, 0));
+    let proximaTrimestral;
+    if (ultimaTrimestral) {
+      proximaTrimestral = sumarDias(ultimaTrimestral.fecha, FRECUENCIA_TRIMESTRAL_DIAS);
+    } else if (bovino.fecha_nacimiento) {
+      proximaTrimestral = sumarDias(bovino.fecha_nacimiento, EDAD_INICIO_TRIMESTRAL_DIAS);
+    } else {
+      proximaTrimestral = bovino.fecha_ingreso; // fecha de nacimiento desconocida: due desde que se registró
+    }
 
     eventos.push({
       tipo: 'trimestral',
