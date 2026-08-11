@@ -92,7 +92,7 @@ export function useBovinos() {
         throw new Error(
           e?.message?.includes('duplicate') || e?.code === '23505'
             ? `El código "${bovino.codigo}" ya está en uso.`
-            : 'No se pudo guardar el animal. Intenta de nuevo.'
+            : `No se pudo guardar: ${e?.message || e?.code || 'error desconocido'}`
         );
       }
     }
