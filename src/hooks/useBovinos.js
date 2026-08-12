@@ -3,6 +3,15 @@ import { supabase } from '../lib/supabaseClient';
 import { db } from '../lib/indexedDb';
 import { alRecuperarDatos } from '../lib/sincronizacion';
 
+// Respaldo por si el navegador/WebView no soporta crypto.randomUUID()
+// (pasa en algunas versiones viejas de Android) — evita que la app truene.
+function generarId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
 export function useBovinos() {
   const [bovinos, setBovinos] = useState([]);
   const [aplicaciones, setAplicaciones] = useState([]);
@@ -60,7 +69,7 @@ export function useBovinos() {
 
     const registro = {
       ...bovino,
-      id: bovino.id || crypto.randomUUID(),
+      id: bovino.id || generarId(),
       // fecha_ingreso se fija UNA sola vez, al crear el animal, y nunca se
       // vuelve a tocar — sirve de referencia cuando no se conoce la fecha
       // real de nacimiento.
@@ -100,7 +109,7 @@ export function useBovinos() {
   };
 
   const registrarAplicacion = async (aplicacion) => {
-    const registro = { ...aplicacion, id: aplicacion.id || crypto.randomUUID() };
+    const registro = { ...aplicacion, id: aplicacion.id || generarId() };
     setAplicaciones((prev) => [...prev, registro]);
     await db.aplicaciones.put(registro);
 
@@ -116,7 +125,7 @@ export function useBovinos() {
   // Registra un parto completo: crea el registro en "partos", actualiza a la
   // madre (fecha_ultimo_parto, cierra la gestación), y opcionalmente crea de
   // una vez el animal de la cría, ya enlazado a su madre.
-  const registrarParto = async ({ madre, fecha, sexoCria, crearCria, codigoCria, nombreCria }) => {
+  const registrarParto = async ({ madre, fecha, sexoCria, crearCria, codigoCria, nombreCria, criaFallecida }) => {
     const numeroParto = partos.filter((p) => p.madre_id === madre.id).length + 1;
 
     let criaId = null;
@@ -128,14 +137,15 @@ export function useBovinos() {
         categoria: sexoCria === 'hembra' ? 'ternera' : 'ternero',
         fecha_nacimiento: fecha,
         madre_id: madre.id,
-        estado: 'activo',
+        estado: criaFallecida ? 'muerto' : 'activo',
+        fecha_baja: criaFallecida ? fecha : null,
         uso_reproductivo: 'sin_definir',
       });
       criaId = cria.id;
     }
 
     const registroParto = {
-      id: crypto.randomUUID(),
+      id: generarId(),
       madre_id: madre.id,
       numero_parto: numeroParto,
       fecha,

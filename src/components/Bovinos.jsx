@@ -18,6 +18,16 @@ const USO_REPRODUCTIVO = [
   { value: "descartado", label: "Descartado", color: "#B23A2E" },
 ];
 
+const ESTADOS = [
+  { value: "activo", label: "Activo", color: "#3C7A4B" },
+  { value: "vendido", label: "Vendido", color: "#C68A3E" },
+  { value: "muerto", label: "Fallecido", color: "#7A7160" },
+];
+
+function infoEstado(estado) {
+  return ESTADOS.find((e) => e.value === estado) || ESTADOS[0];
+}
+
 function edadTexto(fechaNacimiento) {
   if (!fechaNacimiento) return "edad desconocida";
   const hoy = new Date();
@@ -77,12 +87,14 @@ export default function Bovinos() {
   } = useBovinos();
   const [busqueda, setBusqueda] = useState("");
   const [grupo, setGrupo] = useState("todos");
+  const [mostrarBajas, setMostrarBajas] = useState(false);
   const [seleccionado, setSeleccionado] = useState(null);
   const [mostrandoForm, setMostrandoForm] = useState(false);
 
   const resultados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     let lista = bovinos;
+    if (!mostrarBajas) lista = lista.filter((b) => !b.estado || b.estado === "activo");
     if (grupo !== "todos") lista = lista.filter((b) => infoCategoria(b.categoria).grupo === grupo);
     if (q) lista = lista.filter((b) => b.codigo?.toLowerCase().includes(q) || b.nombre?.toLowerCase().includes(q));
     return lista
@@ -153,6 +165,9 @@ export default function Bovinos() {
               {g.label}
             </button>
           ))}
+          <button onClick={() => setMostrarBajas((v) => !v)} style={{ ...pillBtn(mostrarBajas), borderRadius: 999 }}>
+            {mostrarBajas ? "Ocultar bajas" : "Ver vendidos/fallecidos"}
+          </button>
         </div>
 
         {mostrandoForm && (
@@ -176,7 +191,14 @@ export default function Bovinos() {
           {resultados.map(({ b, prox }) => (
             <button key={b.id} onClick={() => setSeleccionado(b.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#FFFDF7", border: "1px solid #E7DFC9", borderRadius: 12, padding: "0.8rem 1rem", textAlign: "left", cursor: "pointer", fontFamily: "system-ui, sans-serif" }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#2A241C" }}>{b.nombre || b.codigo}</div>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#2A241C" }}>
+                  {b.nombre || b.codigo}
+                  {b.estado && b.estado !== "activo" && (
+                    <span style={{ marginLeft: "0.4rem", fontSize: "0.68rem", fontWeight: 700, color: infoEstado(b.estado).color }}>
+                      · {infoEstado(b.estado).label.toUpperCase()}
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: "0.75rem", color: "#7A7160" }}>
                   {b.codigo} · {infoCategoria(b.categoria).label} · {edadTexto(b.fecha_nacimiento)}
                 </div>
@@ -391,6 +413,46 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+        </section>
+
+        {/* Estado: activo / vendido / fallecido */}
+        <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1rem 1.25rem", marginTop: "0.8rem", border: "1px solid #E7DFC9" }}>
+          <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.6rem", color: "#2F4B3C" }}>Estado</h2>
+          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
+            {ESTADOS.map((e) => (
+              <button
+                key={e.value}
+                onClick={() => onGuardarBovino({ ...bovino, estado: e.value, fecha_baja: e.value === "activo" ? null : bovino.fecha_baja || hoyISO() })}
+                style={{
+                  fontFamily: "system-ui, sans-serif",
+                  fontSize: "0.78rem",
+                  fontWeight: 600,
+                  padding: "0.4rem 0.7rem",
+                  borderRadius: 8,
+                  border: `1.5px solid ${e.color}`,
+                  background: (bovino.estado || "activo") === e.value ? e.color : "transparent",
+                  color: (bovino.estado || "activo") === e.value ? "#FFFDF7" : e.color,
+                  cursor: "pointer",
+                }}
+              >
+                {e.label}
+              </button>
+            ))}
+          </div>
+          {bovino.estado && bovino.estado !== "activo" && (
+            <div>
+              <label style={labelStyle}>Fecha ({infoEstado(bovino.estado).label.toLowerCase()})</label>
+              <input
+                type="date"
+                style={inputStyle}
+                value={bovino.fecha_baja || ""}
+                onChange={(e) => onGuardarBovino({ ...bovino, fecha_baja: e.target.value })}
+              />
+              <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.7rem", color: "#A39A82", margin: "0.4rem 0 0" }}>
+                Este animal ya no aparece en las alertas de protocolos pendientes.
+              </p>
             </div>
           )}
         </section>
@@ -693,6 +755,7 @@ function RegistrarPartoForm({ bovino, onCancelar, onGuardar }) {
   const [crearCria, setCrearCria] = useState(true);
   const [codigoCria, setCodigoCria] = useState("");
   const [nombreCria, setNombreCria] = useState("");
+  const [criaFallecida, setCriaFallecida] = useState(false);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
@@ -700,7 +763,7 @@ function RegistrarPartoForm({ bovino, onCancelar, onGuardar }) {
     setError("");
     setGuardando(true);
     try {
-      await onGuardar({ fecha, sexoCria, crearCria, codigoCria, nombreCria });
+      await onGuardar({ fecha, sexoCria, crearCria, codigoCria, nombreCria, criaFallecida });
     } catch (e) {
       setError(e.message || "No se pudo registrar el parto.");
     } finally {
@@ -731,6 +794,13 @@ function RegistrarPartoForm({ bovino, onCancelar, onGuardar }) {
         <input type="checkbox" checked={crearCria} onChange={(e) => setCrearCria(e.target.checked)} />
         Registrar la cría como nuevo animal (queda enlazada a esta madre)
       </label>
+
+      {crearCria && (
+        <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#B23A2E", marginBottom: "0.6rem", cursor: "pointer" }}>
+          <input type="checkbox" checked={criaFallecida} onChange={(e) => setCriaFallecida(e.target.checked)} />
+          La cría nació muerta o falleció
+        </label>
+      )}
 
       {crearCria && (
         <>

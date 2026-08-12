@@ -64,6 +64,9 @@ const DIA_PARTO_ESPERADO = 285;
 
 // Devuelve todos los eventos pendientes de un animal, según su categoría.
 export function calcularEventos(bovino, aplicaciones) {
+  // Animal vendido o fallecido: ya no necesita protocolos pendientes.
+  if (bovino.estado && bovino.estado !== 'activo') return [];
+
   const eventos = [];
   const apps = aplicaciones.filter((a) => a.bovino_id === bovino.id);
   const info = infoCategoria(bovino.categoria);
