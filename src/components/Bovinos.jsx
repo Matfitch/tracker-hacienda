@@ -10,6 +10,7 @@ const GRUPOS = [
   { value: "cria", label: "Terneros/as" },
   { value: "joven", label: "Vaconas/Toretes" },
   { value: "adulto", label: "Vacas/Toros" },
+  { value: "baja", label: "Bajas" },
 ];
 
 const USO_REPRODUCTIVO = [
@@ -18,14 +19,19 @@ const USO_REPRODUCTIVO = [
   { value: "descartado", label: "Descartado", color: "#B23A2E" },
 ];
 
-const ESTADOS = [
-  { value: "activo", label: "Activo", color: "#3C7A4B" },
-  { value: "vendido", label: "Vendido", color: "#C68A3E" },
-  { value: "muerto", label: "Fallecido", color: "#7A7160" },
+const ESTADOS_BASE = [
+  { value: "activo", color: "#3C7A4B", m: "Activo", f: "Activa" },
+  { value: "vendido", color: "#C68A3E", m: "Vendido", f: "Vendida" },
+  { value: "muerto", color: "#7A7160", m: "Fallecido", f: "Fallecida" },
 ];
 
-function infoEstado(estado) {
-  return ESTADOS.find((e) => e.value === estado) || ESTADOS[0];
+function estadosPara(sexo) {
+  return ESTADOS_BASE.map((e) => ({ value: e.value, color: e.color, label: sexo === "hembra" ? e.f : e.m }));
+}
+
+function infoEstado(estado, sexo) {
+  const lista = estadosPara(sexo);
+  return lista.find((e) => e.value === estado) || lista[0];
 }
 
 function edadTexto(fechaNacimiento) {
@@ -87,15 +93,20 @@ export default function Bovinos() {
   } = useBovinos();
   const [busqueda, setBusqueda] = useState("");
   const [grupo, setGrupo] = useState("todos");
-  const [mostrarBajas, setMostrarBajas] = useState(false);
   const [seleccionado, setSeleccionado] = useState(null);
   const [mostrandoForm, setMostrandoForm] = useState(false);
 
   const resultados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     let lista = bovinos;
-    if (!mostrarBajas) lista = lista.filter((b) => !b.estado || b.estado === "activo");
-    if (grupo !== "todos") lista = lista.filter((b) => infoCategoria(b.categoria).grupo === grupo);
+    if (grupo === "baja") {
+      // Bajas: solo vendidos/fallecidos, sin importar su categoría anterior
+      lista = lista.filter((b) => b.estado && b.estado !== "activo");
+    } else {
+      // Cualquier otra vista: solo animales activos, agrupados por categoría
+      lista = lista.filter((b) => !b.estado || b.estado === "activo");
+      if (grupo !== "todos") lista = lista.filter((b) => infoCategoria(b.categoria).grupo === grupo);
+    }
     if (q) lista = lista.filter((b) => b.codigo?.toLowerCase().includes(q) || b.nombre?.toLowerCase().includes(q));
     return lista
       .map((b) => ({ b, prox: proximoEvento(b, aplicaciones) }))
@@ -165,9 +176,6 @@ export default function Bovinos() {
               {g.label}
             </button>
           ))}
-          <button onClick={() => setMostrarBajas((v) => !v)} style={{ ...pillBtn(mostrarBajas), borderRadius: 999 }}>
-            {mostrarBajas ? "Ocultar bajas" : "Ver vendidos/fallecidos"}
-          </button>
         </div>
 
         {mostrandoForm && (
@@ -194,8 +202,8 @@ export default function Bovinos() {
                 <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#2A241C" }}>
                   {b.nombre || b.codigo}
                   {b.estado && b.estado !== "activo" && (
-                    <span style={{ marginLeft: "0.4rem", fontSize: "0.68rem", fontWeight: 700, color: infoEstado(b.estado).color }}>
-                      · {infoEstado(b.estado).label.toUpperCase()}
+                    <span style={{ marginLeft: "0.4rem", fontSize: "0.68rem", fontWeight: 700, color: infoEstado(b.estado, b.sexo).color }}>
+                      · {infoEstado(b.estado, b.sexo).label.toUpperCase()}
                     </span>
                   )}
                 </div>
@@ -421,7 +429,7 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
         <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1rem 1.25rem", marginTop: "0.8rem", border: "1px solid #E7DFC9" }}>
           <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.6rem", color: "#2F4B3C" }}>Estado</h2>
           <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
-            {ESTADOS.map((e) => (
+            {estadosPara(bovino.sexo).map((e) => (
               <button
                 key={e.value}
                 onClick={() => onGuardarBovino({ ...bovino, estado: e.value, fecha_baja: e.value === "activo" ? null : bovino.fecha_baja || hoyISO() })}
@@ -443,7 +451,7 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
           </div>
           {bovino.estado && bovino.estado !== "activo" && (
             <div>
-              <label style={labelStyle}>Fecha ({infoEstado(bovino.estado).label.toLowerCase()})</label>
+              <label style={labelStyle}>Fecha ({infoEstado(bovino.estado, bovino.sexo).label.toLowerCase()})</label>
               <input
                 type="date"
                 style={inputStyle}
