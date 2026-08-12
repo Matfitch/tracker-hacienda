@@ -49,6 +49,7 @@ function nombreDia(fechaISO) {
 
 export default function ProduccionLeche() {
   const [fecha, setFecha] = useState(hoyISO());
+  const [mesVisible, setMesVisible] = useState(mesKeyDe(hoyISO()));
   const [manana, setManana] = useState("");
   const [tarde, setTarde] = useState("");
   const [editandoMeta, setEditandoMeta] = useState(false);
@@ -56,11 +57,28 @@ export default function ProduccionLeche() {
   const [guardado, setGuardado] = useState(false);
   const [error, setError] = useState(null);
 
-  const mesKey = mesKeyDe(fecha);
+  const mesKey = mesVisible;
 
   // ---- Datos desde Supabase (con cache offline vía Dexie) ----
   const { registros: datosMes, guardarDia: guardarEnSupabase, cargando } = useProduccion(mesKey);
   const { metas, guardarMeta: guardarMetaEnSupabase } = useMetas();
+
+  // Si cambias de mes, el selector de fecha del formulario se ajusta para
+  // caer dentro del mes que estás viendo (hoy si es el mes actual, si no el
+  // día 1 de ese mes).
+  const cambiarMes = (delta) => {
+    const [y, m] = mesVisible.split("-").map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    const nuevoMes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    setMesVisible(nuevoMes);
+    if (nuevoMes === mesKeyDe(hoyISO())) {
+      setFecha(hoyISO());
+    } else {
+      setFecha(`${nuevoMes}-01`);
+    }
+  };
+
+  const esMesActual = mesVisible === mesKeyDe(hoyISO());
 
   // Precargar inputs si ya hay dato guardado para la fecha seleccionada
   useEffect(() => {
@@ -116,9 +134,7 @@ export default function ProduccionLeche() {
   const porcentaje = Math.min((totalMes / meta) * 100, 100);
   const cumplida = totalMes >= meta;
 
-  const historial = Object.entries(datosMes)
-    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-    .slice(0, 10);
+  const historial = Object.entries(datosMes).sort((a, b) => (a[0] < b[0] ? 1 : -1));
 
   return (
     <div
@@ -196,7 +212,12 @@ export default function ProduccionLeche() {
             <input
               type="date"
               value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
+              onChange={(e) => {
+                const nuevaFecha = e.target.value;
+                setFecha(nuevaFecha);
+                const nuevoMes = mesKeyDe(nuevaFecha);
+                if (nuevoMes !== mesVisible) setMesVisible(nuevoMes);
+              }}
               style={{
                 border: "none",
                 background: "transparent",
@@ -382,16 +403,55 @@ export default function ProduccionLeche() {
               marginBottom: "0.9rem",
             }}
           >
-            <h2
-              style={{
-                fontSize: "1.05rem",
-                margin: 0,
-                textTransform: "capitalize",
-                color: "#2F4B3C",
-              }}
-            >
-              {nombreMes(mesKey)}
-            </h2>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <button
+                onClick={() => cambiarMes(-1)}
+                aria-label="Mes anterior"
+                style={{
+                  fontFamily: "system-ui, sans-serif",
+                  fontSize: "1rem",
+                  color: "#6B4A32",
+                  background: "#F4EEDB",
+                  border: "1px solid #E7DFC9",
+                  borderRadius: 6,
+                  width: 26,
+                  height: 26,
+                  lineHeight: 1,
+                  cursor: "pointer",
+                }}
+              >
+                ‹
+              </button>
+              <h2
+                style={{
+                  fontSize: "1.05rem",
+                  margin: 0,
+                  textTransform: "capitalize",
+                  color: "#2F4B3C",
+                }}
+              >
+                {nombreMes(mesKey)}
+              </h2>
+              <button
+                onClick={() => cambiarMes(1)}
+                disabled={esMesActual}
+                aria-label="Mes siguiente"
+                style={{
+                  fontFamily: "system-ui, sans-serif",
+                  fontSize: "1rem",
+                  color: esMesActual ? "#C9C2AC" : "#6B4A32",
+                  background: "#F4EEDB",
+                  border: "1px solid #E7DFC9",
+                  borderRadius: 6,
+                  width: 26,
+                  height: 26,
+                  lineHeight: 1,
+                  cursor: esMesActual ? "default" : "pointer",
+                }}
+              >
+                ›
+              </button>
+            </div>
 
             {editandoMeta ? (
               <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
@@ -595,9 +655,9 @@ export default function ProduccionLeche() {
             }}
           >
             <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.75rem", color: "#2F4B3C" }}>
-              Últimos registros
+              Registros del mes ({historial.length})
             </h2>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "22rem", overflowY: "auto" }}>
               {historial.map(([f, d]) => (
                 <div
                   key={f}
