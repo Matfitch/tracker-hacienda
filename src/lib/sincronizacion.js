@@ -48,6 +48,15 @@ export async function sincronizarPendientes() {
         } else if (item.tipo === 'eliminar_parto') {
           const { error } = await supabase.from('partos').delete().eq('id', item.id);
           if (error) throw error;
+        } else if (item.tipo === 'finanza') {
+          const { error } = await supabase.from('finanzas_movimientos').upsert(item.registro);
+          if (error) throw error;
+        } else if (item.tipo === 'eliminar_finanza') {
+          const { error } = await supabase.from('finanzas_movimientos').delete().eq('id', item.id);
+          if (error) throw error;
+        } else if (item.tipo === 'finanzas_config') {
+          const { error } = await supabase.from('finanzas_config').upsert(item.registro);
+          if (error) throw error;
         } else {
           console.warn('Pendiente con tipo desconocido, se descarta:', item);
         }

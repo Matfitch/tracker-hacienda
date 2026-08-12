@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Droplet, Syringe } from 'lucide-react';
+import { Droplet, Syringe, DollarSign } from 'lucide-react';
 import ProduccionLeche from './components/ProduccionLeche';
 import Bovinos from './components/Bovinos';
+import Finanzas from './components/Finanzas';
 import { iniciarSincronizacionAutomatica } from './lib/sincronizacion';
 
 function App() {
-  const [vista, setVista] = useState('produccion'); // 'produccion' | 'bovinos'
+  const [vista, setVista] = useState('produccion'); // 'produccion' | 'bovinos' | 'finanzas'
 
   useEffect(() => {
     iniciarSincronizacionAutomatica();
@@ -13,7 +14,9 @@ function App() {
 
   return (
     <div>
-      {vista === 'produccion' ? <ProduccionLeche /> : <Bovinos />}
+      {vista === 'produccion' && <ProduccionLeche />}
+      {vista === 'bovinos' && <Bovinos />}
+      {vista === 'finanzas' && <Finanzas />}
 
       {/* Navegación inferior fija */}
       <nav
@@ -70,6 +73,27 @@ function App() {
         >
           <Syringe size={18} />
           Bovinos
+        </button>
+        <button
+          onClick={() => setVista('finanzas')}
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '0.2rem',
+            padding: '0.6rem 0',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '0.68rem',
+            fontWeight: 600,
+            color: vista === 'finanzas' ? '#2F4B3C' : '#A39A82',
+          }}
+        >
+          <DollarSign size={18} />
+          Finanzas
         </button>
       </nav>
       {/* Espacio para que la nav no tape contenido */}
