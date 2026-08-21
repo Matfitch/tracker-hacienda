@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { DollarSign, Plus, TrendingUp, TrendingDown, Repeat, Settings, Droplet } from "lucide-react";
+import { DollarSign, Plus, TrendingUp, TrendingDown, Repeat, Settings, Droplet, Receipt } from "lucide-react";
 import { useFinanzas } from "../hooks/useFinanzas";
 import { useProduccion } from "../hooks/useProduccion";
 
@@ -9,17 +9,45 @@ function hoyISO() {
 function mesKeyDe(fechaISO) {
   return fechaISO.slice(0, 7);
 }
-function diasEnMes(mesKey) {
-  const [y, m] = mesKey.split("-").map(Number);
-  return new Date(y, m, 0).getDate();
-}
-function nombreMes(mesKey) {
-  const [y, m] = mesKey.split("-").map(Number);
-  const f = new Date(y, m - 1, 1);
-  return f.toLocaleDateString("es-EC", { month: "long", year: "numeric" });
+function sumarDiasFecha(fechaISO, dias) {
+  const d = new Date(fechaISO + "T00:00:00");
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0, 10);
 }
 function fmt(n) {
   return (n || 0).toLocaleString("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtFechaCorta(fechaISO) {
+  const [y, m, d] = fechaISO.split("-").map(Number);
+  const f = new Date(y, m - 1, d);
+  return f.toLocaleDateString("es-EC", { day: "numeric", month: "short" });
+}
+
+// ---------- Ciclo quincenal: 26→10 y 11→25 de cada mes ----------
+function obtenerQuincena(fechaISO) {
+  const [y, m, d] = fechaISO.split("-").map(Number);
+  if (d >= 26) {
+    const inicio = `${y}-${String(m).padStart(2, "0")}-26`;
+    const finBase = new Date(y, m, 10); // día 10 del mes siguiente
+    return { inicio, fin: finBase.toISOString().slice(0, 10) };
+  }
+  if (d <= 10) {
+    const finBase = new Date(y, m - 1, 10);
+    const inicioBase = new Date(y, m - 2, 26); // mes anterior, día 26
+    return { inicio: inicioBase.toISOString().slice(0, 10), fin: finBase.toISOString().slice(0, 10) };
+  }
+  const inicio = `${y}-${String(m).padStart(2, "0")}-11`;
+  const fin = `${y}-${String(m).padStart(2, "0")}-25`;
+  return { inicio, fin };
+}
+function quincenaSiguiente({ fin }) {
+  return obtenerQuincena(sumarDiasFecha(fin, 1));
+}
+function quincenaAnterior({ inicio }) {
+  return obtenerQuincena(sumarDiasFecha(inicio, -1));
+}
+function etiquetaQuincena({ inicio, fin }) {
+  return `${fmtFechaCorta(inicio)} – ${fmtFechaCorta(fin)}`;
 }
 
 const CATEGORIAS_GASTO = ["Crédito", "Balanceado y sales", "Riego/agua/luz/internet", "Pago ordeñador", "Veterinario/medicamentos", "Otro"];
@@ -47,49 +75,58 @@ const labelStyle = {
 };
 
 export default function Finanzas() {
-  const [mesVisible, setMesVisible] = useState(mesKeyDe(hoyISO()));
+  const [quincena, setQuincena] = useState(() => obtenerQuincena(hoyISO()));
   const { movimientos, config, cargando, guardarMovimiento, eliminarMovimiento, guardarConfig } = useFinanzas();
-  const { registros: produccionMes } = useProduccion(mesVisible);
+
+  const mesInicioKey = mesKeyDe(quincena.inicio);
+  const mesFinKey = mesKeyDe(quincena.fin);
+  const { registros: produccionMesA } = useProduccion(mesInicioKey);
+  const { registros: produccionMesB } = useProduccion(mesFinKey);
 
   const [mostrandoIngreso, setMostrandoIngreso] = useState(false);
   const [mostrandoGasto, setMostrandoGasto] = useState(false);
   const [mostrandoConfig, setMostrandoConfig] = useState(false);
 
-  const esMesActual = mesVisible === mesKeyDe(hoyISO());
-  const cambiarMes = (delta) => {
-    const [y, m] = mesVisible.split("-").map(Number);
-    const d = new Date(y, m - 1 + delta, 1);
-    setMesVisible(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-  };
+  const esQuincenaActual = quincena.inicio === obtenerQuincena(hoyISO()).inicio;
+  const irAnterior = () => setQuincena((q) => quincenaAnterior(q));
+  const irSiguiente = () => setQuincena((q) => quincenaSiguiente(q));
 
-  const delMes = useMemo(() => movimientos.filter((m) => m.fecha?.startsWith(mesVisible)), [movimientos, mesVisible]);
-  const ingresos = delMes.filter((m) => m.tipo === "ingreso").sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
-  const gastos = delMes.filter((m) => m.tipo === "gasto").sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  const dentroDelRango = (fecha) => fecha >= quincena.inicio && fecha <= quincena.fin;
+
+  const delPeriodo = useMemo(() => movimientos.filter((m) => dentroDelRango(m.fecha)), [movimientos, quincena]);
+  const ingresos = delPeriodo.filter((m) => m.tipo === "ingreso").sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  const gastos = delPeriodo.filter((m) => m.tipo === "gasto").sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
   const totalIngresos = ingresos.reduce((acc, m) => acc + Number(m.monto), 0);
   const totalGastos = gastos.reduce((acc, m) => acc + Number(m.monto), 0);
   const balance = totalIngresos - totalGastos;
 
-  const litrosMes = useMemo(
-    () => Object.values(produccionMes).reduce((acc, d) => acc + (d.manana || 0) + (d.tarde || 0), 0),
-    [produccionMes]
-  );
-  const litrosConsumoInterno = (config.consumo_interno_litros_dia || 0) * diasEnMes(mesVisible);
-  const litrosVendiblesEstimados = Math.max(litrosMes - litrosConsumoInterno, 0);
+  const litrosQuincena = useMemo(() => {
+    const combinado = { ...produccionMesA, ...produccionMesB };
+    return Object.entries(combinado)
+      .filter(([fecha]) => dentroDelRango(fecha))
+      .reduce((acc, [, d]) => acc + (d.manana || 0) + (d.tarde || 0), 0);
+  }, [produccionMesA, produccionMesB, quincena]);
+
+  const diasPeriodo = Math.round((new Date(quincena.fin) - new Date(quincena.inicio)) / 86400000) + 1;
+  const litrosConsumoInterno = (config.consumo_interno_litros_dia || 0) * diasPeriodo;
+  const litrosVendiblesEstimados = Math.max(litrosQuincena - litrosConsumoInterno, 0);
   const ingresoEstimadoLeche = litrosVendiblesEstimados * (config.precio_leche || 0);
   const yaTieneIngresoLeche = ingresos.some((i) => i.categoria === "Venta de leche");
 
-  const categoriasGastoEsteMes = new Set(gastos.map((g) => g.categoria));
+  const categoriasGastoEstePeriodo = new Set(gastos.map((g) => g.categoria));
   const recurrentesFaltantes = useMemo(() => {
     const vistos = new Set();
     return movimientos
-      .filter((m) => m.tipo === "gasto" && m.recurrente && m.fecha < `${mesVisible}-01`)
+      .filter((m) => m.tipo === "gasto" && m.recurrente && m.fecha < quincena.inicio)
       .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
       .filter((m) => {
-        if (vistos.has(m.categoria) || categoriasGastoEsteMes.has(m.categoria)) return false;
+        if (vistos.has(m.categoria) || categoriasGastoEstePeriodo.has(m.categoria)) return false;
         vistos.add(m.categoria);
         return true;
       });
-  }, [movimientos, mesVisible, gastos]);
+  }, [movimientos, quincena, gastos]);
+
+  const fechaSugerida = esQuincenaActual ? hoyISO() : quincena.inicio;
 
   return (
     <div style={{ minHeight: "100vh", background: "#F5F0E3", fontFamily: "'Iowan Old Style', Georgia, serif", color: "#2A241C", paddingBottom: "3rem" }}>
@@ -117,9 +154,9 @@ export default function Finanzas() {
 
         <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1.25rem", marginTop: "-1rem", boxShadow: "0 6px 18px rgba(47,75,60,0.14)", border: "1px solid #E7DFC9" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
-            <button onClick={() => cambiarMes(-1)} style={{ fontFamily: "system-ui, sans-serif", fontSize: "1rem", color: "#6B4A32", background: "#F4EEDB", border: "1px solid #E7DFC9", borderRadius: 6, width: 26, height: 26, cursor: "pointer" }}>‹</button>
-            <h2 style={{ fontSize: "1.05rem", margin: 0, textTransform: "capitalize", color: "#2F4B3C" }}>{nombreMes(mesVisible)}</h2>
-            <button onClick={() => cambiarMes(1)} disabled={esMesActual} style={{ fontFamily: "system-ui, sans-serif", fontSize: "1rem", color: esMesActual ? "#C9C2AC" : "#6B4A32", background: "#F4EEDB", border: "1px solid #E7DFC9", borderRadius: 6, width: 26, height: 26, cursor: esMesActual ? "default" : "pointer" }}>›</button>
+            <button onClick={irAnterior} style={{ fontFamily: "system-ui, sans-serif", fontSize: "1rem", color: "#6B4A32", background: "#F4EEDB", border: "1px solid #E7DFC9", borderRadius: 6, width: 26, height: 26, cursor: "pointer" }}>‹</button>
+            <h2 style={{ fontSize: "1.05rem", margin: 0, color: "#2F4B3C" }}>{etiquetaQuincena(quincena)}</h2>
+            <button onClick={irSiguiente} disabled={esQuincenaActual} style={{ fontFamily: "system-ui, sans-serif", fontSize: "1rem", color: esQuincenaActual ? "#C9C2AC" : "#6B4A32", background: "#F4EEDB", border: "1px solid #E7DFC9", borderRadius: 6, width: 26, height: 26, cursor: esQuincenaActual ? "default" : "pointer" }}>›</button>
           </div>
 
           {cargando ? (
@@ -149,15 +186,15 @@ export default function Finanzas() {
             <div style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem" }}>
               <Droplet size={16} color="#2F4B3C" style={{ marginTop: 2, flexShrink: 0 }} />
               <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", color: "#2F4B3C" }}>
-                Este mes llevas <strong>{litrosMes.toFixed(1)} L</strong> producidos
+                Del {fmtFechaCorta(quincena.inicio)} al {fmtFechaCorta(quincena.fin)} llevas <strong>{litrosQuincena.toFixed(1)} L</strong> producidos
                 {config.consumo_interno_litros_dia > 0 && <> (menos {litrosConsumoInterno.toFixed(0)} L de consumo interno)</>} — a ${config.precio_leche}/L eso son aprox. <strong>${fmt(ingresoEstimadoLeche)}</strong>.
                 <button
                   onClick={() =>
                     guardarMovimiento({
                       tipo: "ingreso",
-                      fecha: mesVisible === mesKeyDe(hoyISO()) ? hoyISO() : `${mesVisible}-01`,
+                      fecha: fechaSugerida,
                       categoria: "Venta de leche",
-                      descripcion: `${litrosVendiblesEstimados.toFixed(1)} L a $${config.precio_leche}/L`,
+                      descripcion: `${litrosVendiblesEstimados.toFixed(1)} L a $${config.precio_leche}/L (${fmtFechaCorta(quincena.inicio)}–${fmtFechaCorta(quincena.fin)})`,
                       monto: Number(ingresoEstimadoLeche.toFixed(2)),
                       recurrente: false,
                     })
@@ -176,15 +213,16 @@ export default function Finanzas() {
             <div style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem" }}>
               <Repeat size={16} color="#8A6414" style={{ marginTop: 2, flexShrink: 0 }} />
               <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", color: "#5C4412" }}>
-                Tienes {recurrentesFaltantes.length} gasto{recurrentesFaltantes.length > 1 ? "s" : ""} recurrente{recurrentesFaltantes.length > 1 ? "s" : ""} sin registrar este mes ({recurrentesFaltantes.map((r) => r.categoria).join(", ")}).
+                Tienes {recurrentesFaltantes.length} gasto{recurrentesFaltantes.length > 1 ? "s" : ""} recurrente{recurrentesFaltantes.length > 1 ? "s" : ""} sin registrar en este período ({recurrentesFaltantes.map((r) => r.categoria).join(", ")}).
                 <button
                   onClick={async () => {
                     for (const r of recurrentesFaltantes) {
                       await guardarMovimiento({
                         tipo: "gasto",
-                        fecha: mesVisible === mesKeyDe(hoyISO()) ? hoyISO() : `${mesVisible}-01`,
+                        fecha: fechaSugerida,
                         categoria: r.categoria,
                         descripcion: r.descripcion,
+                        numero_factura: "",
                         monto: r.monto,
                         recurrente: true,
                       });
@@ -192,7 +230,7 @@ export default function Finanzas() {
                   }}
                   style={{ display: "block", marginTop: "0.5rem", fontFamily: "system-ui, sans-serif", fontSize: "0.78rem", fontWeight: 600, color: "#FFFDF7", background: "#8A6414", border: "none", borderRadius: 6, padding: "0.35rem 0.7rem", cursor: "pointer" }}
                 >
-                  Copiar a este mes
+                  Copiar a este período
                 </button>
               </div>
             </div>
@@ -213,14 +251,14 @@ export default function Finanzas() {
             <MovimientoForm
               tipo="ingreso"
               categorias={CATEGORIAS_INGRESO}
-              mesVisible={mesVisible}
+              fechaSugerida={fechaSugerida}
               onCancelar={() => setMostrandoIngreso(false)}
               onGuardar={async (datos) => { await guardarMovimiento({ ...datos, tipo: "ingreso" }); setMostrandoIngreso(false); }}
             />
           )}
 
           {ingresos.length === 0 && !mostrandoIngreso && (
-            <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#A39A82" }}>Sin ingresos registrados este mes.</p>
+            <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#A39A82" }}>Sin ingresos registrados en este período.</p>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
             {ingresos.map((m) => (
@@ -243,14 +281,14 @@ export default function Finanzas() {
             <MovimientoForm
               tipo="gasto"
               categorias={CATEGORIAS_GASTO}
-              mesVisible={mesVisible}
+              fechaSugerida={fechaSugerida}
               onCancelar={() => setMostrandoGasto(false)}
               onGuardar={async (datos) => { await guardarMovimiento({ ...datos, tipo: "gasto" }); setMostrandoGasto(false); }}
             />
           )}
 
           {gastos.length === 0 && !mostrandoGasto && (
-            <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#A39A82" }}>Sin gastos registrados este mes.</p>
+            <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#A39A82" }}>Sin gastos registrados en este período.</p>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
             {gastos.map((m) => (
@@ -272,6 +310,7 @@ function MovimientoRow({ m, onEliminar, color }) {
         </div>
         <div style={{ color: "#7A7160", fontSize: "0.72rem" }}>
           {m.fecha}
+          {m.numero_factura ? ` · Fact. ${m.numero_factura}` : ""}
           {m.descripcion ? ` · ${m.descripcion}` : ""}
         </div>
       </div>
@@ -285,10 +324,11 @@ function MovimientoRow({ m, onEliminar, color }) {
   );
 }
 
-function MovimientoForm({ tipo, categorias, mesVisible, onCancelar, onGuardar }) {
+function MovimientoForm({ tipo, categorias, fechaSugerida, onCancelar, onGuardar }) {
   const [categoria, setCategoria] = useState(categorias[0]);
-  const [fecha, setFecha] = useState(mesVisible === mesKeyDe(hoyISO()) ? hoyISO() : `${mesVisible}-01`);
+  const [fecha, setFecha] = useState(fechaSugerida);
   const [descripcion, setDescripcion] = useState("");
+  const [numeroFactura, setNumeroFactura] = useState("");
   const [monto, setMonto] = useState("");
   const [recurrente, setRecurrente] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -296,7 +336,14 @@ function MovimientoForm({ tipo, categorias, mesVisible, onCancelar, onGuardar })
   const guardar = async () => {
     setGuardando(true);
     try {
-      await onGuardar({ categoria, fecha, descripcion, monto: parseFloat(monto) || 0, recurrente });
+      await onGuardar({
+        categoria,
+        fecha,
+        descripcion,
+        numero_factura: tipo === "gasto" ? numeroFactura : null,
+        monto: parseFloat(monto) || 0,
+        recurrente,
+      });
     } finally {
       setGuardando(false);
     }
@@ -322,6 +369,22 @@ function MovimientoForm({ tipo, categorias, mesVisible, onCancelar, onGuardar })
           <input type="number" inputMode="decimal" style={inputStyle} value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0.00" />
         </div>
       </div>
+
+      {tipo === "gasto" && (
+        <div>
+          <label style={labelStyle}>N.º de factura (opcional)</label>
+          <div style={{ position: "relative" }}>
+            <Receipt size={14} color="#A39A82" style={{ position: "absolute", left: "0.6rem", top: "50%", transform: "translateY(-50%)" }} />
+            <input
+              style={{ ...inputStyle, paddingLeft: "1.9rem" }}
+              value={numeroFactura}
+              onChange={(e) => setNumeroFactura(e.target.value)}
+              placeholder="ej. 001-002-000456"
+            />
+          </div>
+        </div>
+      )}
+
       <div>
         <label style={labelStyle}>Descripción (opcional)</label>
         <input style={inputStyle} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
@@ -329,7 +392,7 @@ function MovimientoForm({ tipo, categorias, mesVisible, onCancelar, onGuardar })
       {tipo === "gasto" && (
         <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontFamily: "system-ui, sans-serif", fontSize: "0.78rem", color: "#6B4A32", cursor: "pointer" }}>
           <input type="checkbox" checked={recurrente} onChange={(e) => setRecurrente(e.target.checked)} />
-          Es un gasto fijo mensual (se puede copiar cada mes)
+          Es un gasto fijo (se puede copiar cada quincena/mes)
         </label>
       )}
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.2rem" }}>
