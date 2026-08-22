@@ -33,8 +33,6 @@ export function useProduccion(mesKey) {
   useEffect(() => { cargar(); }, [cargar]);
 
   const guardarDia = async (fecha, manana, tarde) => {
-    // Se actualiza el estado y se guarda en IndexedDB SIEMPRE primero,
-    // sin importar si hay red o no. Esto es lo que hace que offline funcione.
     setRegistros((prev) => ({ ...prev, [fecha]: { manana, tarde } }));
     await db.produccion.put({ fecha, manana, tarde });
 
@@ -44,11 +42,48 @@ export function useProduccion(mesKey) {
         .upsert({ fecha, manana, tarde }, { onConflict: 'fecha' });
       if (error) throw error;
     } catch (e) {
-      // Cubre tanto errores que Supabase devuelve como fallas de red que
-      // lanzan una excepción (sin conexión, DNS, etc.)
       await db.pendientes.add({ tipo: 'produccion', fecha, manana, tarde });
     }
   };
 
   return { registros, cargando, guardarDia, recargar: cargar };
+}
+
+export function useProduccionRango(fechaInicio, fechaFin) {
+  const [registros, setRegistros] = useState({});
+  const [cargando, setCargando] = useState(true);
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    try {
+      const { data, error } = await supabase
+        .from('produccion_leche')
+        .select('*')
+        .gte('fecha', fechaInicio)
+        .lte('fecha', fechaFin);
+      if (error) throw error;
+      const mapa = {};
+      data.forEach((r) => { mapa[r.fecha] = { manana: r.manana, tarde: r.tarde }; });
+      setRegistros(mapa);
+      await db.produccion.bulkPut(data);
+    } catch (e) {
+      const local = await db.produccion.toArray();
+      const mapa = {};
+      local
+        .filter((r) => r.fecha >= fechaInicio && r.fecha <= fechaFin)
+        .forEach((r) => { mapa[r.fecha] = { manana: r.manana, tarde: r.tarde }; });
+      setRegistros(mapa);
+    } finally {
+      setCargando(false);
+    }
+  }, [fechaInicio, fechaFin]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const totalLitros = Object.values(registros).reduce(
+    (acc, r) => acc + (Number(r.manana) || 0) + (Number(r.tarde) || 0),
+    0
+  );
+
+  return { registros, cargando, totalLitros, recargar: cargar };
 }

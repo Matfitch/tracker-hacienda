@@ -46,7 +46,12 @@ export function useFinanzas() {
   useEffect(() => alRecuperarDatos(cargar), [cargar]);
 
   const guardarMovimiento = async (movimiento) => {
-    const registro = { ...movimiento, id: movimiento.id || generarId() };
+    const registro = {
+      ...movimiento,
+      id: movimiento.id || generarId(),
+      // Si no se especifica un mes contable explícito, se infiere del año-mes de la fecha
+      mes_contable: movimiento.mes_contable || (movimiento.fecha ? movimiento.fecha.slice(0, 7) : null),
+    };
     setMovimientos((prev) => {
       const existe = prev.some((m) => m.id === registro.id);
       return existe ? prev.map((m) => (m.id === registro.id ? registro : m)) : [...prev, registro];
