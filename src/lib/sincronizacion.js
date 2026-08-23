@@ -57,6 +57,18 @@ export async function sincronizarPendientes() {
         } else if (item.tipo === 'finanzas_config') {
           const { error } = await supabase.from('finanzas_config').upsert(item.registro);
           if (error) throw error;
+        } else if (item.tipo === 'bloque') {
+          const { error } = await supabase.from('bloques').upsert(item.registro);
+          if (error) throw error;
+        } else if (item.tipo === 'eliminar_bloque') {
+          const { error } = await supabase.from('bloques').delete().eq('id', item.id);
+          if (error) throw error;
+        } else if (item.tipo === 'evento_bloque') {
+          const { error } = await supabase.from('eventos_bloque').upsert(item.registro);
+          if (error) throw error;
+        } else if (item.tipo === 'eliminar_evento_bloque') {
+          const { error } = await supabase.from('eventos_bloque').delete().eq('id', item.id);
+          if (error) throw error;
         } else {
           console.warn('Pendiente con tipo desconocido, se descarta:', item);
         }
