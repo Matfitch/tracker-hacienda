@@ -13,11 +13,13 @@ export function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Estado actual del bloque: en pastoreo desde X, o en descanso desde X,
-// o sin registros todavía.
-export function estadoActual(bloqueId, eventos) {
+// Estado actual del bloque: recién sembrado (en establecimiento), en
+// pastoreo, en descanso, o sin registros todavía. La siembra "reinicia" el
+// estado del bloque aunque haya habido pastoreos antes.
+export function estadoActual(bloque, eventos) {
+  const bloqueId = bloque.id;
   const movimientos = eventos
-    .filter((e) => e.bloque_id === bloqueId && (e.tipo === 'entrada' || e.tipo === 'salida'))
+    .filter((e) => e.bloque_id === bloqueId && (e.tipo === 'entrada' || e.tipo === 'salida' || e.tipo === 'siembra'))
     .sort((a, b) => (a.fecha < b.fecha ? 1 : -1)); // más reciente primero
 
   if (movimientos.length === 0) return { estado: 'sin_registro' };
@@ -25,6 +27,18 @@ export function estadoActual(bloqueId, eventos) {
   const ultimo = movimientos[0];
   const dias = diasEntre(ultimo.fecha, hoyISO());
 
+  if (ultimo.tipo === 'siembra') {
+    const diasMin = bloque.dias_min_pastoreo ?? 61;
+    const diasMax = bloque.dias_max_pastoreo ?? 75;
+    return {
+      estado: 'establecimiento',
+      desde: ultimo.fecha,
+      dias,
+      diasMin,
+      diasMax,
+      listo: dias >= diasMin,
+    };
+  }
   if (ultimo.tipo === 'entrada') {
     return { estado: 'pastoreo', desde: ultimo.fecha, dias };
   }
@@ -66,4 +80,11 @@ export function historialFertilizaciones(bloqueId, eventos) {
 
 export function ultimaFertilizacion(bloqueId, eventos) {
   return historialFertilizaciones(bloqueId, eventos)[0] || null;
+}
+
+// Historial de siembras de un bloque, más reciente primero.
+export function historialSiembras(bloqueId, eventos) {
+  return eventos
+    .filter((e) => e.bloque_id === bloqueId && e.tipo === 'siembra')
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
 }
