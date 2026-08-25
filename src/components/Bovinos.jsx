@@ -540,8 +540,8 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
           <RegistrarAplicacionForm
             evento={registrando}
             onCancelar={() => setRegistrando(null)}
-            onGuardar={async (medicamento, notas) => {
-              await onRegistrarAplicacion({ bovino_id: bovino.id, etapa: registrando.etapa, fecha: hoyISO(), medicamento, notas });
+            onGuardar={async (fecha, medicamento, notas) => {
+              await onRegistrarAplicacion({ bovino_id: bovino.id, etapa: registrando.etapa, fecha, medicamento, notas });
               setRegistrando(null);
             }}
           />
@@ -732,12 +732,22 @@ function DatosBasicosForm({ bovino, onGuardar }) {
 }
 
 function RegistrarAplicacionForm({ evento, onCancelar, onGuardar }) {
+  const [fecha, setFecha] = useState(hoyISO());
   const [medicamento, setMedicamento] = useState(evento.sugerido || "");
   const [notas, setNotas] = useState("");
   return (
     <section style={{ background: "#F4EEDB", borderRadius: 14, padding: "1rem 1.1rem", marginTop: "0.8rem", border: "1px solid #C68A3E" }}>
       <div style={{ fontFamily: "system-ui, sans-serif", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.6rem", color: "#2A241C" }}>
-        Registrar: {evento.etiqueta} (hoy, {hoyISO()})
+        Registrar: {evento.etiqueta}
+      </div>
+      <div style={{ marginBottom: "0.6rem" }}>
+        <label style={labelStyle}>Fecha de aplicación</label>
+        <input type="date" style={inputStyle} value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        {evento.etapa === "trimestral" && (
+          <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.7rem", color: "#8A6414", margin: "0.3rem 0 0" }}>
+            El próximo período de 3 meses se cuenta desde esta fecha.
+          </p>
+        )}
       </div>
       <div style={{ marginBottom: "0.6rem" }}>
         <input style={inputStyle} value={medicamento} onChange={(e) => setMedicamento(e.target.value)} placeholder="Medicamento y dosis aplicada" />
@@ -749,7 +759,11 @@ function RegistrarAplicacionForm({ evento, onCancelar, onGuardar }) {
         <button onClick={onCancelar} style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", padding: "0.5rem", borderRadius: 8, border: "1px solid #C68A3E", background: "transparent", color: "#6B4A32", cursor: "pointer" }}>
           Cancelar
         </button>
-        <button onClick={() => onGuardar(medicamento, notas)} style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", fontWeight: 600, padding: "0.5rem", borderRadius: 8, border: "none", background: "#2F4B3C", color: "#F5F0E3", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.3rem" }}>
+        <button
+          disabled={!fecha}
+          onClick={() => onGuardar(fecha, medicamento, notas)}
+          style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", fontWeight: 600, padding: "0.5rem", borderRadius: 8, border: "none", background: !fecha ? "#C9C2AC" : "#2F4B3C", color: "#F5F0E3", cursor: !fecha ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.3rem" }}
+        >
           <Check size={14} /> Confirmar
         </button>
       </div>
