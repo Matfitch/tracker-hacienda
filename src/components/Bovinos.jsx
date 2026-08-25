@@ -1,7 +1,80 @@
-import React, { useState, useMemo } from "react";
-import { Search, Plus, AlertTriangle, Check, ArrowLeft, Syringe, Heart } from "lucide-react";
+import React, { useState, useMemo, useRef } from "react";
+import { Search, Plus, AlertTriangle, Check, ArrowLeft, Syringe, Heart, Camera } from "lucide-react";
 import { useBovinos } from "../hooks/useBovinos";
 import { calcularEventos, proximoEvento, hoyISO, CATEGORIAS, infoCategoria } from "../lib/protocolos";
+
+// Redimensiona y comprime la imagen en el propio navegador antes de
+// guardarla (queda como texto base64 pequeño, sin necesitar un servicio de
+// almacenamiento aparte).
+function redimensionarImagen(file, maxLado = 160, calidad = 0.7) {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onerror = reject;
+    lector.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxLado) {
+          height = Math.round((height * maxLado) / width);
+          width = maxLado;
+        } else if (height > maxLado) {
+          width = Math.round((width * maxLado) / height);
+          height = maxLado;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", calidad));
+      };
+      img.src = lector.result;
+    };
+    lector.readAsDataURL(file);
+  });
+}
+
+function FotoBovino({ foto, onCambiar, size = 44 }) {
+  const inputRef = useRef(null);
+  return (
+    <>
+      <button
+        onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          border: "1.5px solid #E7DFC9",
+          background: foto ? `#fff url(${foto}) center/cover no-repeat` : "#F4EEDB",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          cursor: "pointer",
+          padding: 0,
+          overflow: "hidden",
+        }}
+        aria-label="Foto del animal"
+      >
+        {!foto && <Camera size={Math.round(size * 0.4)} color="#A39A82" />}
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: "none" }}
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const dataUrl = await redimensionarImagen(file);
+          onCambiar(dataUrl);
+          e.target.value = "";
+        }}
+      />
+    </>
+  );
+}
 
 const COLOR_ESTADO = { vencido: "#B23A2E", hoy: "#C68A3E", proximo: "#3C7A4B" };
 
@@ -197,22 +270,39 @@ export default function Bovinos() {
             </p>
           )}
           {resultados.map(({ b, prox }) => (
-            <button key={b.id} onClick={() => setSeleccionado(b.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#FFFDF7", border: "1px solid #E7DFC9", borderRadius: 12, padding: "0.8rem 1rem", textAlign: "left", cursor: "pointer", fontFamily: "system-ui, sans-serif" }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#2A241C" }}>
-                  {b.nombre || b.codigo}
-                  {b.estado && b.estado !== "activo" && (
-                    <span style={{ marginLeft: "0.4rem", fontSize: "0.68rem", fontWeight: 700, color: infoEstado(b.estado, b.sexo).color }}>
-                      · {infoEstado(b.estado, b.sexo).label.toUpperCase()}
-                    </span>
-                  )}
+            <button key={b.id} onClick={() => setSeleccionado(b.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.7rem", background: "#FFFDF7", border: "1px solid #E7DFC9", borderRadius: 12, padding: "0.8rem 1rem", textAlign: "left", cursor: "pointer", fontFamily: "system-ui, sans-serif" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.7rem", minWidth: 0 }}>
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: "50%",
+                    border: "1.5px solid #E7DFC9",
+                    background: b.foto ? `#fff url(${b.foto}) center/cover no-repeat` : "#F4EEDB",
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {!b.foto && <Camera size={15} color="#C9C2AC" />}
                 </div>
-                <div style={{ fontSize: "0.75rem", color: "#7A7160" }}>
-                  {b.codigo} · {infoCategoria(b.categoria).label} · {edadTexto(b.fecha_nacimiento)}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#2A241C" }}>
+                    {b.nombre || b.codigo}
+                    {b.estado && b.estado !== "activo" && (
+                      <span style={{ marginLeft: "0.4rem", fontSize: "0.68rem", fontWeight: 700, color: infoEstado(b.estado, b.sexo).color }}>
+                        · {infoEstado(b.estado, b.sexo).label.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: "0.75rem", color: "#7A7160" }}>
+                    {b.codigo} · {infoCategoria(b.categoria).label} · {edadTexto(b.fecha_nacimiento)}
+                  </div>
                 </div>
               </div>
               {prox && (
-                <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.72rem", fontWeight: 600, color: COLOR_ESTADO[prox.estado] }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.72rem", fontWeight: 600, color: COLOR_ESTADO[prox.estado], flexShrink: 0 }}>
                   {prox.estado === "vencido" && <AlertTriangle size={13} />}
                   {prox.fecha}
                 </div>
@@ -356,6 +446,12 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
       <main style={{ maxWidth: 520, margin: "0 auto", padding: "0 1.1rem" }}>
         {/* Categoría + uso reproductivo */}
         <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1rem 1.25rem", marginTop: "-1rem", boxShadow: "0 6px 18px rgba(47,75,60,0.14)", border: "1px solid #E7DFC9" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.8rem", marginBottom: "0.9rem" }}>
+            <FotoBovino foto={bovino.foto} size={64} onCambiar={(dataUrl) => onGuardarBovino({ ...bovino, foto: dataUrl })} />
+            <p style={{ margin: 0, fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", color: "#A39A82" }}>
+              Toca la foto para {bovino.foto ? "cambiarla" : "agregar una"}.
+            </p>
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem" }}>
               Categoría: <strong>{info.label}</strong>
