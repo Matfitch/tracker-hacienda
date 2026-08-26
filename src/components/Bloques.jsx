@@ -48,6 +48,7 @@ export default function Bloques() {
         bloque={bloqueSeleccionado}
         eventos={eventos}
         onVolver={() => setSeleccionado(null)}
+        onGuardarBloque={guardarBloque}
         onEliminarBloque={async (id) => { await eliminarBloque(id); setSeleccionado(null); }}
         onRegistrarEvento={registrarEvento}
         onEliminarEvento={eliminarEvento}
@@ -183,7 +184,7 @@ function FormNuevoBloque({ onCancelar, onGuardar }) {
   );
 }
 
-function FichaBloque({ bloque, eventos, onVolver, onEliminarBloque, onRegistrarEvento, onEliminarEvento }) {
+function FichaBloque({ bloque, eventos, onVolver, onGuardarBloque, onEliminarBloque, onRegistrarEvento, onEliminarEvento }) {
   const info = estadoActual(bloque, eventos);
   const badge = badgeEstado(info);
   const pastoreos = historialPastoreos(bloque.id, eventos);
@@ -192,6 +193,8 @@ function FichaBloque({ bloque, eventos, onVolver, onEliminarBloque, onRegistrarE
 
   const [formAbierto, setFormAbierto] = useState(null); // 'entrada' | 'salida' | 'siembra' | 'fertilizacion' | null
   const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
+  const [editandoDatos, setEditandoDatos] = useState(false);
+  const [editandoId, setEditandoId] = useState(null); // id del evento que se está corrigiendo
 
   return (
     <div style={{ minHeight: "100vh", background: "#F5F0E3", fontFamily: "'Iowan Old Style', Georgia, serif", color: "#2A241C", paddingBottom: "3rem" }}>
@@ -206,7 +209,27 @@ function FichaBloque({ bloque, eventos, onVolver, onEliminarBloque, onRegistrarE
       </header>
 
       <main style={{ maxWidth: 520, margin: "0 auto", padding: "0 1.1rem" }}>
-        <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1.1rem 1.25rem", marginTop: "-1rem", boxShadow: "0 6px 18px rgba(47,75,60,0.14)", border: "1px solid #E7DFC9" }}>
+        {/* Datos del bloque: editable */}
+        <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1rem 1.25rem", marginTop: "-1rem", boxShadow: "0 6px 18px rgba(47,75,60,0.14)", border: "1px solid #E7DFC9" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h2 style={{ fontSize: "0.95rem", margin: 0, color: "#2F4B3C" }}>Datos del bloque</h2>
+            <button onClick={() => setEditandoDatos((v) => !v)} style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", color: "#6B4A32", background: "#F4EEDB", border: "1px dashed #C68A3E", borderRadius: 6, padding: "0.25rem 0.55rem", cursor: "pointer" }}>
+              {editandoDatos ? "Cerrar" : "Editar ✎"}
+            </button>
+          </div>
+          {!editandoDatos ? (
+            <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", color: "#4A4132", lineHeight: 1.7, marginTop: "0.5rem" }}>
+              <div>Nombre: {bloque.nombre}</div>
+              <div>Área: {bloque.area_hectareas ? `${bloque.area_hectareas} ha` : "—"}</div>
+              <div>Ventana para pastorear tras siembra: {bloque.dias_min_pastoreo ?? 61}-{bloque.dias_max_pastoreo ?? 75} días</div>
+              {bloque.notas ? <div>Notas: {bloque.notas}</div> : null}
+            </div>
+          ) : (
+            <EditarBloqueForm bloque={bloque} onGuardar={async (cambios) => { await onGuardarBloque({ ...bloque, ...cambios }); setEditandoDatos(false); }} />
+          )}
+        </section>
+
+        <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1.1rem 1.25rem", marginTop: "0.8rem", border: "1px solid #E7DFC9" }}>
           <div style={{ display: "inline-block", fontSize: "0.8rem", fontWeight: 600, color: badge.color, background: badge.bg, borderRadius: 999, padding: "0.3rem 0.7rem", marginBottom: "0.9rem" }}>
             {badge.texto}
           </div>
@@ -262,16 +285,28 @@ function FichaBloque({ bloque, eventos, onVolver, onEliminarBloque, onRegistrarE
           <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.7rem", color: "#2F4B3C" }}>Historial de siembras</h2>
           {siembras.length === 0 && <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", color: "#7A7160" }}>Sin registros todavía.</p>}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-            {siembras.map((s) => (
-              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", padding: "0.4rem 0", borderBottom: "1px solid #F1EBD8" }}>
-                <div>
-                  <div style={{ color: "#2A241C", fontWeight: 600 }}>{s.fecha}</div>
-                  <div style={{ color: "#7A7160" }}>{s.especie || "sin especificar"}</div>
-                  {s.notas ? <div style={{ color: "#A39A82", fontSize: "0.72rem" }}>{s.notas}</div> : null}
+            {siembras.map((s) =>
+              editandoId === s.id ? (
+                <SiembraForm
+                  key={s.id}
+                  inicial={s}
+                  onCancelar={() => setEditandoId(null)}
+                  onGuardar={async (datos) => { await onRegistrarEvento({ ...s, ...datos }); setEditandoId(null); }}
+                />
+              ) : (
+                <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", padding: "0.4rem 0", borderBottom: "1px solid #F1EBD8" }}>
+                  <div>
+                    <div style={{ color: "#2A241C", fontWeight: 600 }}>{s.fecha}</div>
+                    <div style={{ color: "#7A7160" }}>{s.especie || "sin especificar"}</div>
+                    {s.notas ? <div style={{ color: "#A39A82", fontSize: "0.72rem" }}>{s.notas}</div> : null}
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+                    <button onClick={() => setEditandoId(s.id)} style={botonEditar}>Editar</button>
+                    <button onClick={() => onEliminarEvento(s.id)} style={botonEliminar}>Eliminar</button>
+                  </div>
                 </div>
-                <button onClick={() => onEliminarEvento(s.id)} style={botonEliminar}>Eliminar</button>
-              </div>
-            ))}
+              )
+            )}
           </div>
         </section>
 
@@ -279,11 +314,29 @@ function FichaBloque({ bloque, eventos, onVolver, onEliminarBloque, onRegistrarE
           <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.7rem", color: "#2F4B3C" }}>Historial de pastoreos</h2>
           {pastoreos.length === 0 && <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", color: "#7A7160" }}>Sin registros todavía.</p>}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-            {pastoreos.map((p, i) => (
-              <div key={i} style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", padding: "0.4rem 0.6rem", background: "#F4EEDB", borderRadius: 6 }}>
-                {p.inicio} → {p.fin || "en curso"} · <strong>{p.dias} día{p.dias === 1 ? "" : "s"}</strong>
-              </div>
-            ))}
+            {pastoreos.map((p, i) => {
+              const claveEdicion = `pastoreo-${p.inicioId || i}`;
+              if (editandoId === claveEdicion) {
+                return (
+                  <PastoreoEditForm
+                    key={claveEdicion}
+                    periodo={p}
+                    onCancelar={() => setEditandoId(null)}
+                    onGuardar={async ({ inicio, fin }) => {
+                      if (p.inicioId) await onRegistrarEvento({ id: p.inicioId, bloque_id: bloque.id, tipo: "entrada", fecha: inicio });
+                      if (p.finId) await onRegistrarEvento({ id: p.finId, bloque_id: bloque.id, tipo: "salida", fecha: fin });
+                      setEditandoId(null);
+                    }}
+                  />
+                );
+              }
+              return (
+                <div key={claveEdicion} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", padding: "0.4rem 0.6rem", background: "#F4EEDB", borderRadius: 6 }}>
+                  <span>{p.inicio} → {p.fin || "en curso"} · <strong>{p.dias} día{p.dias === 1 ? "" : "s"}</strong></span>
+                  <button onClick={() => setEditandoId(claveEdicion)} style={botonEditar}>Editar</button>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -291,16 +344,28 @@ function FichaBloque({ bloque, eventos, onVolver, onEliminarBloque, onRegistrarE
           <h2 style={{ fontSize: "0.95rem", margin: "0 0 0.7rem", color: "#2F4B3C" }}>Historial de fertilizaciones</h2>
           {fertilizaciones.length === 0 && <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", color: "#7A7160" }}>Sin registros todavía.</p>}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-            {fertilizaciones.map((f) => (
+            {fertilizaciones.map((f) =>
+              editandoId === f.id ? (
+                <FertilizacionForm
+                  key={f.id}
+                  inicial={f}
+                  onCancelar={() => setEditandoId(null)}
+                  onGuardar={async (datos) => { await onRegistrarEvento({ ...f, ...datos }); setEditandoId(null); }}
+                />
+              ) : (
               <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", padding: "0.4rem 0", borderBottom: "1px solid #F1EBD8" }}>
                 <div>
                   <div style={{ color: "#2A241C", fontWeight: 600 }}>{f.fecha}</div>
                   <div style={{ color: "#7A7160" }}>{f.productos || "sin detalle"}</div>
                   {f.notas ? <div style={{ color: "#A39A82", fontSize: "0.72rem" }}>{f.notas}</div> : null}
                 </div>
-                <button onClick={() => onEliminarEvento(f.id)} style={botonEliminar}>Eliminar</button>
+                <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+                  <button onClick={() => setEditandoId(f.id)} style={botonEditar}>Editar</button>
+                  <button onClick={() => onEliminarEvento(f.id)} style={botonEliminar}>Eliminar</button>
+                </div>
               </div>
-            ))}
+              )
+            )}
           </div>
         </section>
 
@@ -331,6 +396,7 @@ function FichaBloque({ bloque, eventos, onVolver, onEliminarBloque, onRegistrarE
 }
 
 const botonEliminar = { background: "none", border: "none", color: "#B23A2E", cursor: "pointer", fontSize: "0.72rem", fontFamily: "system-ui, sans-serif" };
+const botonEditar = { background: "none", border: "none", color: "#6B4A32", cursor: "pointer", fontSize: "0.72rem", fontFamily: "system-ui, sans-serif", textDecoration: "underline" };
 
 function botonAccion(color) {
   return { flex: 1, minWidth: "9rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem", fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", fontWeight: 600, color: "#FFFDF7", background: color, border: "none", borderRadius: 8, padding: "0.55rem", cursor: "pointer" };
@@ -360,10 +426,10 @@ function FechaSimpleForm({ titulo, onCancelar, onGuardar }) {
   );
 }
 
-function SiembraForm({ onCancelar, onGuardar }) {
-  const [fecha, setFecha] = useState(hoyISO());
-  const [especie, setEspecie] = useState("");
-  const [notas, setNotas] = useState("");
+function SiembraForm({ inicial, onCancelar, onGuardar }) {
+  const [fecha, setFecha] = useState(inicial?.fecha || hoyISO());
+  const [especie, setEspecie] = useState(inicial?.especie || "");
+  const [notas, setNotas] = useState(inicial?.notas || "");
 
   return (
     <div style={{ marginTop: "0.9rem", paddingTop: "0.9rem", borderTop: "1px solid #F1EBD8", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
@@ -391,10 +457,10 @@ function SiembraForm({ onCancelar, onGuardar }) {
   );
 }
 
-function FertilizacionForm({ onCancelar, onGuardar }) {
-  const [fecha, setFecha] = useState(hoyISO());
-  const [productos, setProductos] = useState("");
-  const [notas, setNotas] = useState("");
+function FertilizacionForm({ inicial, onCancelar, onGuardar }) {
+  const [fecha, setFecha] = useState(inicial?.fecha || hoyISO());
+  const [productos, setProductos] = useState(inicial?.productos || "");
+  const [notas, setNotas] = useState(inicial?.notas || "");
 
   return (
     <div style={{ marginTop: "0.9rem", paddingTop: "0.9rem", borderTop: "1px solid #F1EBD8", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
@@ -419,6 +485,89 @@ function FertilizacionForm({ onCancelar, onGuardar }) {
           onClick={() => onGuardar({ fecha, productos, notas })}
           style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", fontWeight: 600, padding: "0.5rem", borderRadius: 8, border: "none", background: !productos ? "#C9C2AC" : "#2F4B3C", color: "#F5F0E3", cursor: !productos ? "not-allowed" : "pointer" }}
         >
+          Guardar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditarBloqueForm({ bloque, onGuardar }) {
+  const [nombre, setNombre] = useState(bloque.nombre || "");
+  const [area, setArea] = useState(bloque.area_hectareas != null ? String(bloque.area_hectareas) : "");
+  const [diasMin, setDiasMin] = useState(String(bloque.dias_min_pastoreo ?? 61));
+  const [diasMax, setDiasMax] = useState(String(bloque.dias_max_pastoreo ?? 75));
+  const [notas, setNotas] = useState(bloque.notas || "");
+
+  return (
+    <div style={{ marginTop: "0.7rem", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+      <div>
+        <label style={labelStyle}>Nombre</label>
+        <input style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} />
+      </div>
+      <div>
+        <label style={labelStyle}>Área (hectáreas)</label>
+        <input type="number" inputMode="decimal" style={inputStyle} value={area} onChange={(e) => setArea(e.target.value)} />
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Días mín. tras siembra</label>
+          <input type="number" style={inputStyle} value={diasMin} onChange={(e) => setDiasMin(e.target.value)} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Días máx. tras siembra</label>
+          <input type="number" style={inputStyle} value={diasMax} onChange={(e) => setDiasMax(e.target.value)} />
+        </div>
+      </div>
+      <div>
+        <label style={labelStyle}>Notas</label>
+        <input style={inputStyle} value={notas} onChange={(e) => setNotas(e.target.value)} />
+      </div>
+      <button
+        disabled={!nombre}
+        onClick={() =>
+          onGuardar({
+            nombre,
+            area_hectareas: area ? parseFloat(area) : null,
+            dias_min_pastoreo: parseInt(diasMin, 10) || 61,
+            dias_max_pastoreo: parseInt(diasMax, 10) || 75,
+            notas,
+          })
+        }
+        style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", fontWeight: 600, padding: "0.55rem", borderRadius: 8, border: "none", background: !nombre ? "#C9C2AC" : "#2F4B3C", color: "#F5F0E3", cursor: !nombre ? "not-allowed" : "pointer" }}
+      >
+        Guardar cambios
+      </button>
+    </div>
+  );
+}
+
+function PastoreoEditForm({ periodo, onCancelar, onGuardar }) {
+  const [inicio, setInicio] = useState(periodo.inicio);
+  const [fin, setFin] = useState(periodo.fin || "");
+
+  return (
+    <div style={{ background: "#F4EEDB", borderRadius: 10, padding: "0.8rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Fecha de entrada</label>
+          <input type="date" style={inputStyle} value={inicio} onChange={(e) => setInicio(e.target.value)} disabled={!periodo.inicioId} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Fecha de salida</label>
+          <input type="date" style={inputStyle} value={fin} onChange={(e) => setFin(e.target.value)} disabled={!periodo.finId} placeholder={!periodo.fin ? "en curso" : ""} />
+        </div>
+      </div>
+      {(!periodo.inicioId || !periodo.finId) && (
+        <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.7rem", color: "#8A6414", margin: 0 }}>
+          {!periodo.fin ? "Este pastoreo sigue en curso, no tiene fecha de salida todavía." : "Una de las fechas no tiene un registro editable individual."}
+        </p>
+      )}
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <button onClick={onCancelar} style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", padding: "0.5rem", borderRadius: 8, border: "1px solid #C68A3E", background: "transparent", color: "#6B4A32", cursor: "pointer" }}>
+          Cancelar
+        </button>
+        <button onClick={() => onGuardar({ inicio, fin })} style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", fontWeight: 600, padding: "0.5rem", borderRadius: 8, border: "none", background: "#2F4B3C", color: "#F5F0E3", cursor: "pointer" }}>
           Guardar
         </button>
       </div>

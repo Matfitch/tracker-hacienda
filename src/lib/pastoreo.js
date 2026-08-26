@@ -53,19 +53,31 @@ export function historialPastoreos(bloqueId, eventos) {
     .sort((a, b) => (a.fecha < b.fecha ? -1 : 1)); // cronológico
 
   const periodos = [];
-  let entradaAbierta = null;
+  let entradaAbierta = null; // { fecha, id }
 
   for (const ev of movimientos) {
     if (ev.tipo === 'entrada') {
-      entradaAbierta = ev.fecha;
+      entradaAbierta = { fecha: ev.fecha, id: ev.id };
     } else if (ev.tipo === 'salida') {
-      const inicio = entradaAbierta || ev.fecha;
-      periodos.push({ inicio, fin: ev.fecha, dias: diasEntre(inicio, ev.fecha) });
+      const inicio = entradaAbierta || { fecha: ev.fecha, id: null };
+      periodos.push({
+        inicio: inicio.fecha,
+        inicioId: inicio.id,
+        fin: ev.fecha,
+        finId: ev.id,
+        dias: diasEntre(inicio.fecha, ev.fecha),
+      });
       entradaAbierta = null;
     }
   }
   if (entradaAbierta) {
-    periodos.push({ inicio: entradaAbierta, fin: null, dias: diasEntre(entradaAbierta, hoyISO()) });
+    periodos.push({
+      inicio: entradaAbierta.fecha,
+      inicioId: entradaAbierta.id,
+      fin: null,
+      finId: null,
+      dias: diasEntre(entradaAbierta.fecha, hoyISO()),
+    });
   }
 
   return periodos.sort((a, b) => (a.inicio < b.inicio ? 1 : -1)); // más reciente primero

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import { Search, Plus, AlertTriangle, Check, ArrowLeft, Syringe, Heart, Camera } from "lucide-react";
 import { useBovinos } from "../hooks/useBovinos";
-import { calcularEventos, proximoEvento, hoyISO, CATEGORIAS, infoCategoria } from "../lib/protocolos";
+import { calcularEventos, proximoEvento, hoyISO, CATEGORIAS, infoCategoria, tiempoGestacion } from "../lib/protocolos";
 
 // Redimensiona y comprime la imagen en el propio navegador antes de
 // guardarla (queda como texto base64 pequeño, sin necesitar un servicio de
@@ -62,7 +62,6 @@ function FotoBovino({ foto, onCambiar, size = 44 }) {
         ref={inputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         style={{ display: "none" }}
         onChange={async (e) => {
           const file = e.target.files?.[0];
@@ -446,12 +445,6 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
       <main style={{ maxWidth: 520, margin: "0 auto", padding: "0 1.1rem" }}>
         {/* Categoría + uso reproductivo */}
         <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1rem 1.25rem", marginTop: "-1rem", boxShadow: "0 6px 18px rgba(47,75,60,0.14)", border: "1px solid #E7DFC9" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.8rem", marginBottom: "0.9rem" }}>
-            <FotoBovino foto={bovino.foto} size={64} onCambiar={(dataUrl) => onGuardarBovino({ ...bovino, foto: dataUrl })} />
-            <p style={{ margin: 0, fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", color: "#A39A82" }}>
-              Toca la foto para {bovino.foto ? "cambiarla" : "agregar una"}.
-            </p>
-          </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem" }}>
               Categoría: <strong>{info.label}</strong>
@@ -563,6 +556,12 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
 
         {/* Datos básicos: editar código, nombre, fecha de nacimiento */}
         <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1rem 1.25rem", marginTop: "0.8rem", border: "1px solid #E7DFC9" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.9rem", marginBottom: "0.9rem" }}>
+            <FotoBovino foto={bovino.foto} size={96} onCambiar={(dataUrl) => onGuardarBovino({ ...bovino, foto: dataUrl })} />
+            <p style={{ margin: 0, fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", color: "#A39A82" }}>
+              Toca la foto para {bovino.foto ? "cambiarla" : "agregar una"} (cámara o galería).
+            </p>
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h2 style={{ fontSize: "0.95rem", margin: 0, color: "#2F4B3C" }}>Datos básicos</h2>
             <button onClick={() => setEditandoDatos((v) => !v)} style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", color: "#6B4A32", background: "#F4EEDB", border: "1px dashed #C68A3E", borderRadius: 6, padding: "0.25rem 0.55rem", cursor: "pointer" }}>
@@ -656,6 +655,14 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
             <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", color: "#4A4132", lineHeight: 1.7 }}>
               <div>Partos registrados: {historialPartos.length}</div>
               <div>Inseminación (gestación actual): {bovino.fecha_inseminacion || "— sin registrar —"}</div>
+              {bovino.fecha_inseminacion && (() => {
+                const g = tiempoGestacion(bovino.fecha_inseminacion);
+                return (
+                  <div style={{ color: "#2F4B3C", fontWeight: 600 }}>
+                    Tiempo de gestación: {g.meses} mes{g.meses === 1 ? "" : "es"} y {g.dias} día{g.dias === 1 ? "" : "s"}
+                  </div>
+                );
+              })()}
             </div>
 
             {editandoReproduccion && (

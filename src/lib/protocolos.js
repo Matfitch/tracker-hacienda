@@ -168,3 +168,11 @@ export function proximoEvento(bovino, aplicaciones) {
   const eventos = calcularEventos(bovino, aplicaciones);
   return eventos[0] || null;
 }
+
+// Tiempo de gestación transcurrido, en meses y días completos.
+export function tiempoGestacion(fechaInseminacion, fechaFin = hoyISO()) {
+  const dias = diasEntre(fechaInseminacion, fechaFin);
+  const meses = Math.floor(dias / 30);
+  const diasRestantes = dias - meses * 30;
+  return { diasTotales: dias, meses, dias: diasRestantes };
+}
