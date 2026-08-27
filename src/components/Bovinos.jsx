@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useRef } from "react";
-import { Search, Plus, AlertTriangle, Check, ArrowLeft, Syringe, Heart, Camera } from "lucide-react";
+import { Search, Plus, AlertTriangle, Check, ArrowLeft, Syringe, Heart, Camera, Image as ImageIcon, Printer } from "lucide-react";
 import { useBovinos } from "../hooks/useBovinos";
 import { calcularEventos, proximoEvento, hoyISO, CATEGORIAS, infoCategoria, tiempoGestacion } from "../lib/protocolos";
+import { imprimir } from "../lib/imprimir";
 
 // Redimensiona y comprime la imagen en el propio navegador antes de
 // guardarla (queda como texto base64 pequeño, sin necesitar un servicio de
@@ -35,11 +36,23 @@ function redimensionarImagen(file, maxLado = 160, calidad = 0.7) {
 }
 
 function FotoBovino({ foto, onCambiar, size = 44 }) {
-  const inputRef = useRef(null);
+  const inputCamara = useRef(null);
+  const inputGaleria = useRef(null);
+  const [menuAbierto, setMenuAbierto] = useState(false);
+
+  const manejarArchivo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const dataUrl = await redimensionarImagen(file);
+    onCambiar(dataUrl);
+    e.target.value = "";
+    setMenuAbierto(false);
+  };
+
   return (
-    <>
+    <div style={{ position: "relative", flexShrink: 0 }}>
       <button
-        onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
+        onClick={(e) => { e.stopPropagation(); setMenuAbierto((v) => !v); }}
         style={{
           width: size,
           height: size,
@@ -49,7 +62,6 @@ function FotoBovino({ foto, onCambiar, size = 44 }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          flexShrink: 0,
           cursor: "pointer",
           padding: 0,
           overflow: "hidden",
@@ -58,20 +70,48 @@ function FotoBovino({ foto, onCambiar, size = 44 }) {
       >
         {!foto && <Camera size={Math.round(size * 0.4)} color="#A39A82" />}
       </button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: "none" }}
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          const dataUrl = await redimensionarImagen(file);
-          onCambiar(dataUrl);
-          e.target.value = "";
-        }}
-      />
-    </>
+
+      {menuAbierto && (
+        <>
+          <div
+            onClick={() => setMenuAbierto(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 40 }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: size + 6,
+              left: 0,
+              zIndex: 41,
+              background: "#FFFDF7",
+              border: "1px solid #E7DFC9",
+              borderRadius: 10,
+              boxShadow: "0 6px 18px rgba(47,75,60,0.18)",
+              overflow: "hidden",
+              minWidth: "9.5rem",
+            }}
+          >
+            <button
+              onClick={() => inputCamara.current?.click()}
+              style={{ display: "flex", alignItems: "center", gap: "0.4rem", width: "100%", padding: "0.6rem 0.8rem", background: "none", border: "none", borderBottom: "1px solid #F1EBD8", cursor: "pointer", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#2A241C", textAlign: "left" }}
+            >
+              <Camera size={15} color="#6B4A32" /> Tomar foto
+            </button>
+            <button
+              onClick={() => inputGaleria.current?.click()}
+              style={{ display: "flex", alignItems: "center", gap: "0.4rem", width: "100%", padding: "0.6rem 0.8rem", background: "none", border: "none", cursor: "pointer", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#2A241C", textAlign: "left" }}
+            >
+              <ImageIcon size={15} color="#6B4A32" /> Elegir de galería
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Cámara: capture fuerza a abrir directo la cámara del dispositivo */}
+      <input ref={inputCamara} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={manejarArchivo} />
+      {/* Galería: SIN capture, así el selector de archivos del sistema se abre normal */}
+      <input ref={inputGaleria} type="file" accept="image/*" style={{ display: "none" }} onChange={manejarArchivo} />
+    </div>
   );
 }
 
@@ -433,9 +473,17 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
   return (
     <div style={{ minHeight: "100vh", background: "#F5F0E3", fontFamily: "'Iowan Old Style', Georgia, serif", color: "#2A241C", paddingBottom: "3rem" }}>
       <header style={{ background: "#2F4B3C", color: "#F5F0E3", padding: "1.25rem 1.25rem 1.5rem", borderBottom: "3px solid #C68A3E" }}>
-        <button onClick={onVolver} style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "none", color: "#B8CBB9", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", cursor: "pointer", padding: 0, marginBottom: "0.6rem" }}>
-          <ArrowLeft size={15} /> Volver
-        </button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <button onClick={onVolver} style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "none", color: "#B8CBB9", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", cursor: "pointer", padding: 0, marginBottom: "0.6rem" }}>
+            <ArrowLeft size={15} /> Volver
+          </button>
+          <button
+            onClick={() => imprimirFichaBovino(bovino, info, eventos, historialAplicaciones, historialPartos, madre, hermanos)}
+            style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "1px solid #4A6B4C", color: "#B8CBB9", fontFamily: "system-ui, sans-serif", fontSize: "0.75rem", cursor: "pointer", padding: "0.3rem 0.6rem", borderRadius: 6 }}
+          >
+            <Printer size={14} /> Imprimir
+          </button>
+        </div>
         <h1 style={{ fontSize: "1.4rem", fontWeight: 600, margin: 0, color: "#F5F0E3" }}>{bovino.nombre || bovino.codigo}</h1>
         <p style={{ margin: "0.2rem 0 0", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#B8CBB9" }}>
           {bovino.codigo} · {info.label} · {bovino.fecha_nacimiento ? `nació ${bovino.fecha_nacimiento}` : "fecha de nacimiento desconocida"}
@@ -960,4 +1008,65 @@ function RegistrarPartoForm({ bovino, onCancelar, onGuardar }) {
       </div>
     </section>
   );
+}
+
+function imprimirFichaBovino(bovino, info, eventos, historialAplicaciones, historialPartos, madre, hermanos) {
+  const gestacion = bovino.fecha_inseminacion ? tiempoGestacion(bovino.fecha_inseminacion) : null;
+
+  const html = `
+    <div class="encabezado">
+      ${bovino.foto ? `<img class="foto" src="${bovino.foto}" />` : ""}
+      <div>
+        <h1>${bovino.nombre || bovino.codigo}</h1>
+        <div class="subtitulo">${bovino.codigo} · ${info.label} · ${bovino.sexo === "hembra" ? "Hembra" : "Macho"}</div>
+      </div>
+    </div>
+
+    <h2>Datos básicos</h2>
+    <div class="campo"><strong>Código:</strong> ${bovino.codigo}</div>
+    <div class="campo"><strong>Nombre:</strong> ${bovino.nombre || "—"}</div>
+    <div class="campo"><strong>Fecha de nacimiento:</strong> ${bovino.fecha_nacimiento || "desconocida"}</div>
+    <div class="campo"><strong>Categoría:</strong> ${info.label}</div>
+    <div class="campo"><strong>Estado:</strong> ${bovino.estado || "activo"}</div>
+    ${madre ? `<div class="campo"><strong>Madre:</strong> ${madre.nombre || madre.codigo}</div>` : ""}
+    ${hermanos.length ? `<div class="campo"><strong>Hermanos/as:</strong> ${hermanos.map((h) => h.nombre || h.codigo).join(", ")}</div>` : ""}
+
+    ${
+      bovino.fecha_ultimo_parto || bovino.fecha_inseminacion
+        ? `<h2>Reproducción</h2>
+    ${bovino.fecha_ultimo_parto ? `<div class="campo"><strong>Última cría:</strong> ${bovino.fecha_ultimo_parto}</div>` : ""}
+    ${bovino.fecha_inseminacion ? `<div class="campo"><strong>Inseminación (gestación actual):</strong> ${bovino.fecha_inseminacion}</div>` : ""}
+    ${gestacion ? `<div class="campo"><strong>Tiempo de gestación:</strong> ${gestacion.meses} meses y ${gestacion.dias} días</div>` : ""}`
+        : ""
+    }
+
+    <h2>Próximos / pendientes</h2>
+    ${
+      eventos.length === 0
+        ? `<div class="campo">Sin protocolos pendientes.</div>`
+        : `<table><thead><tr><th>Evento</th><th>Fecha</th><th>Estado</th></tr></thead><tbody>
+        ${eventos.map((ev) => `<tr><td>${ev.etiqueta}</td><td>${ev.fecha}</td><td>${ev.estado}</td></tr>`).join("")}
+      </tbody></table>`
+    }
+
+    <h2>Historial de aplicaciones</h2>
+    ${
+      historialAplicaciones.length === 0
+        ? `<div class="campo">Sin aplicaciones registradas.</div>`
+        : `<table><thead><tr><th>Fecha</th><th>Etapa</th><th>Medicamento</th></tr></thead><tbody>
+        ${historialAplicaciones.map((a) => `<tr><td>${a.fecha}</td><td>${a.etapa}</td><td>${a.medicamento || "—"}</td></tr>`).join("")}
+      </tbody></table>`
+    }
+
+    ${
+      historialPartos.length
+        ? `<h2>Historial de partos</h2>
+      <table><thead><tr><th>#</th><th>Fecha</th><th>Sexo cría</th></tr></thead><tbody>
+        ${historialPartos.map((p) => `<tr><td>${p.numero_parto}</td><td>${p.fecha}</td><td>${p.sexo_cria === "hembra" ? "Hembra" : "Macho"}</td></tr>`).join("")}
+      </tbody></table>`
+        : ""
+    }
+  `;
+
+  imprimir(`Ficha - ${bovino.nombre || bovino.codigo}`, html);
 }

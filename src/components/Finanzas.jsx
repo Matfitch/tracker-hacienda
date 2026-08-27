@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from "react";
-import { DollarSign, Plus, TrendingUp, TrendingDown, Repeat, Settings, Droplet, Receipt } from "lucide-react";
+import { DollarSign, Plus, TrendingUp, TrendingDown, Repeat, Settings, Droplet, Receipt, Printer } from "lucide-react";
 import { useFinanzas } from "../hooks/useFinanzas";
 import { useProduccionRango } from "../hooks/useProduccion";
+import { imprimir } from "../lib/imprimir";
 
 function hoyISO() {
   return new Date().toISOString().slice(0, 10);
@@ -450,6 +451,30 @@ function CalculadoraVentaLeche({ config, mesVisible, onGuardar }) {
       >
         {guardado ? "✓ Agregado — puedes registrar otra quincena" : "Agregar como ingreso"}
       </button>
+
+      <button
+        disabled={litros === 0}
+        onClick={() => imprimirProduccionQuincenal(inicio, fin, registros, config, litros, consumoInterno, litrosVendibles, monto)}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "0.35rem",
+          marginTop: "0.5rem",
+          fontFamily: "system-ui, sans-serif",
+          fontSize: "0.78rem",
+          fontWeight: 600,
+          color: litros === 0 ? "#C9C2AC" : "#2F4B3C",
+          background: "transparent",
+          border: `1px solid ${litros === 0 ? "#C9C2AC" : "#A9C6AB"}`,
+          borderRadius: 8,
+          padding: "0.5rem",
+          cursor: litros === 0 ? "not-allowed" : "pointer",
+        }}
+      >
+        <Printer size={14} /> Imprimir producción de esta quincena
+      </button>
     </section>
   );
 }
@@ -482,4 +507,37 @@ function ConfigForm({ config, onGuardar, onCerrar }) {
       </div>
     </div>
   );
+}
+
+function imprimirProduccionQuincenal(inicio, fin, registros, config, litros, consumoInterno, litrosVendibles, monto) {
+  const dias = Object.entries(registros).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+
+  const html = `
+    <h1>Producción de leche</h1>
+    <div class="subtitulo">Quincena del ${fmtFechaCorta(inicio)} al ${fmtFechaCorta(fin)}</div>
+
+    <h2>Detalle diario</h2>
+    ${
+      dias.length === 0
+        ? `<div class="campo">Sin registros en este rango.</div>`
+        : `<table><thead><tr><th>Fecha</th><th>Mañana (L)</th><th>Tarde (L)</th><th>Total (L)</th></tr></thead><tbody>
+        ${dias
+          .map(
+            ([fecha, d]) =>
+              `<tr><td>${fecha}</td><td>${d.manana || 0}</td><td>${d.tarde || 0}</td><td>${(d.manana || 0) + (d.tarde || 0)}</td></tr>`
+          )
+          .join("")}
+        <tr class="fila-total"><td colspan="3">Total producido</td><td>${litros.toFixed(1)} L</td></tr>
+      </tbody></table>`
+    }
+
+    <h2>Cálculo de ingreso</h2>
+    <div class="campo"><strong>Total producido:</strong> ${litros.toFixed(1)} L</div>
+    ${config.consumo_interno_litros_dia > 0 ? `<div class="campo"><strong>Consumo interno:</strong> -${consumoInterno.toFixed(1)} L</div>` : ""}
+    <div class="campo"><strong>Litros vendibles:</strong> ${litrosVendibles.toFixed(1)} L</div>
+    <div class="campo"><strong>Precio por litro:</strong> $${config.precio_leche}</div>
+    <div class="campo" style="font-size: 1.1rem; margin-top: 0.5rem;"><strong>Total a cobrar: $${monto.toFixed(2)}</strong></div>
+  `;
+
+  imprimir(`Producción ${fmtFechaCorta(inicio)}-${fmtFechaCorta(fin)}`, html);
 }
