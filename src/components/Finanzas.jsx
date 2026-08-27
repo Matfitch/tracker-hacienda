@@ -363,6 +363,8 @@ function CalculadoraVentaLeche({ config, mesVisible, onGuardar }) {
   const [inicio, setInicio] = useState(`${mesVisible}-01`);
   const [fin, setFin] = useState(`${mesVisible}-15`);
   const [mesContable, setMesContable] = useState(mesVisible);
+  const [aplicarRetencion, setAplicarRetencion] = useState(false);
+  const [porcentajeRetencion, setPorcentajeRetencion] = useState("1");
   const [guardado, setGuardado] = useState(false);
   const { registros, cargando } = useProduccionRango(inicio, fin);
 
@@ -373,15 +375,19 @@ function CalculadoraVentaLeche({ config, mesVisible, onGuardar }) {
   const dias = Math.max(Math.round((new Date(fin) - new Date(inicio)) / 86400000) + 1, 0);
   const consumoInterno = (config.consumo_interno_litros_dia || 0) * dias;
   const litrosVendibles = Math.max(litros - consumoInterno, 0);
-  const monto = litrosVendibles * (config.precio_leche || 0);
+  const montoBruto = litrosVendibles * (config.precio_leche || 0);
+  const porcentaje = parseFloat(porcentajeRetencion) || 0;
+  const montoRetencion = aplicarRetencion ? montoBruto * (porcentaje / 100) : 0;
+  const monto = montoBruto - montoRetencion;
 
   const guardar = async () => {
+    const detalleRetencion = aplicarRetencion ? ` − retención ${porcentaje}% ($${fmt(montoRetencion)})` : "";
     await onGuardar({
       tipo: "ingreso",
       fecha: fin,
       mes_contable: mesContable,
       categoria: "Venta de leche",
-      descripcion: `${litrosVendibles.toFixed(1)} L (${fmtFechaCorta(inicio)}–${fmtFechaCorta(fin)}) a $${config.precio_leche}/L`,
+      descripcion: `${litrosVendibles.toFixed(1)} L (${fmtFechaCorta(inicio)}–${fmtFechaCorta(fin)}) a $${config.precio_leche}/L${detalleRetencion}`,
       monto: Number(monto.toFixed(2)),
       recurrente: false,
     });
@@ -411,6 +417,25 @@ function CalculadoraVentaLeche({ config, mesVisible, onGuardar }) {
         </div>
       </div>
 
+      <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#2F4B3C", marginBottom: "0.6rem", cursor: "pointer" }}>
+        <input type="checkbox" checked={aplicarRetencion} onChange={(e) => setAplicarRetencion(e.target.checked)} />
+        Descontar retención
+        {aplicarRetencion && (
+          <span style={{ display: "flex", alignItems: "center", gap: "0.25rem", marginLeft: "0.3rem" }}>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              value={porcentajeRetencion}
+              onChange={(e) => setPorcentajeRetencion(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: "3.2rem", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", padding: "0.15rem 0.35rem", borderRadius: 6, border: "1.5px solid #A9C6AB", background: "#FFFDF7" }}
+            />
+            %
+          </span>
+        )}
+      </label>
+
       <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.82rem", color: "#2F4B3C", background: "#FFFDF7", borderRadius: 8, padding: "0.6rem 0.8rem", marginBottom: "0.7rem" }}>
         {cargando ? (
           "Calculando…"
@@ -418,7 +443,14 @@ function CalculadoraVentaLeche({ config, mesVisible, onGuardar }) {
           <>
             <strong>{litros.toFixed(1)} L</strong> producidos
             {config.consumo_interno_litros_dia > 0 && <> (menos {consumoInterno.toFixed(0)} L de consumo interno)</>}
-            {" → "}a ${config.precio_leche}/L = <strong>${fmt(monto)}</strong>
+            {" → "}a ${config.precio_leche}/L = ${fmt(montoBruto)}
+            {aplicarRetencion && (
+              <>
+                <br />− retención {porcentaje}% = −${fmt(montoRetencion)}
+              </>
+            )}
+            <br />
+            <strong>Total: ${fmt(monto)}</strong>
           </>
         )}
       </div>
@@ -454,7 +486,7 @@ function CalculadoraVentaLeche({ config, mesVisible, onGuardar }) {
 
       <button
         disabled={litros === 0}
-        onClick={() => imprimirProduccionQuincenal(inicio, fin, registros, config, litros, consumoInterno, litrosVendibles, monto)}
+        onClick={() => imprimirProduccionQuincenal(inicio, fin, registros, config, litros, consumoInterno, litrosVendibles, montoBruto, aplicarRetencion ? porcentaje : null, montoRetencion, monto)}
         style={{
           width: "100%",
           display: "flex",
@@ -509,7 +541,7 @@ function ConfigForm({ config, onGuardar, onCerrar }) {
   );
 }
 
-function imprimirProduccionQuincenal(inicio, fin, registros, config, litros, consumoInterno, litrosVendibles, monto) {
+function imprimirProduccionQuincenal(inicio, fin, registros, config, litros, consumoInterno, litrosVendibles, montoBruto, porcentajeRetencion, montoRetencion, montoNeto) {
   const dias = Object.entries(registros).sort((a, b) => (a[0] < b[0] ? -1 : 1));
 
   const html = `
@@ -536,7 +568,9 @@ function imprimirProduccionQuincenal(inicio, fin, registros, config, litros, con
     ${config.consumo_interno_litros_dia > 0 ? `<div class="campo"><strong>Consumo interno:</strong> -${consumoInterno.toFixed(1)} L</div>` : ""}
     <div class="campo"><strong>Litros vendibles:</strong> ${litrosVendibles.toFixed(1)} L</div>
     <div class="campo"><strong>Precio por litro:</strong> $${config.precio_leche}</div>
-    <div class="campo" style="font-size: 1.1rem; margin-top: 0.5rem;"><strong>Total a cobrar: $${monto.toFixed(2)}</strong></div>
+    <div class="campo"><strong>Subtotal:</strong> $${montoBruto.toFixed(2)}</div>
+    ${porcentajeRetencion != null ? `<div class="campo"><strong>Retención (${porcentajeRetencion}%):</strong> -$${montoRetencion.toFixed(2)}</div>` : ""}
+    <div class="campo" style="font-size: 1.1rem; margin-top: 0.5rem;"><strong>Total a cobrar: $${montoNeto.toFixed(2)}</strong></div>
   `;
 
   imprimir(`Producción ${fmtFechaCorta(inicio)}-${fmtFechaCorta(fin)}`, html);
