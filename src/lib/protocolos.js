@@ -62,14 +62,36 @@ const DIA_TRATAMIENTO_POSTPARTO = 3;
 const DIA_SECADO_GESTACION = 210; // 7 meses aprox
 const DIA_PARTO_ESPERADO = 285;
 
+// Devuelve la inseminación activa de un animal: la más reciente que todavía
+// no se marcó como "repite_celo" ni "aborto" (esas ya no cuentan como
+// gestación en curso), y que ya se realizó (no una programada a futuro).
+export function inseminacionActiva(bovinoId, inseminaciones) {
+  return inseminaciones
+    .filter((i) => i.bovino_id === bovinoId && i.resultado !== 'repite_celo' && i.resultado !== 'aborto' && i.resultado !== 'programada')
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))[0] || null;
+}
+
+// Próxima inseminación programada (a futuro) que todavía no se marcó como
+// realizada.
+export function inseminacionProgramada(bovinoId, inseminaciones) {
+  return inseminaciones
+    .filter((i) => i.bovino_id === bovinoId && i.resultado === 'programada')
+    .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))[0] || null;
+}
+
+export function historialInseminaciones(bovinoId, inseminaciones) {
+  return inseminaciones.filter((i) => i.bovino_id === bovinoId).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+}
+
 // Devuelve todos los eventos pendientes de un animal, según su categoría.
-export function calcularEventos(bovino, aplicaciones) {
+export function calcularEventos(bovino, aplicaciones, inseminaciones = []) {
   // Animal vendido o fallecido: ya no necesita protocolos pendientes.
   if (bovino.estado && bovino.estado !== 'activo') return [];
 
   const eventos = [];
   const apps = aplicaciones.filter((a) => a.bovino_id === bovino.id);
   const info = infoCategoria(bovino.categoria);
+  const inseminacion = inseminacionActiva(bovino.id, inseminaciones);
 
   const yaAplicado = (etapa, desdeFecha = null) =>
     apps.some((a) => a.etapa === etapa && (!desdeFecha || a.fecha >= desdeFecha));
@@ -131,17 +153,33 @@ export function calcularEventos(bovino, aplicaciones) {
     });
   }
 
+  // --- Inseminación programada a futuro (vacona o vaca) ---
+  const programada = inseminacionProgramada(bovino.id, inseminaciones);
+  if (puedeGestar(bovino.categoria) && programada) {
+    eventos.push({
+      tipo: 'inseminacion_programada',
+      etapa: 'inseminacion_programada',
+      etiqueta: 'Inseminación programada',
+      sugerido: programada.pajuela_codigo || programada.pajuela_nombre
+        ? `Pajuela: ${programada.pajuela_codigo || ''} ${programada.pajuela_nombre || ''}`.trim()
+        : null,
+      fecha: programada.fecha,
+      completado: false,
+      inseminacionId: programada.id,
+    });
+  }
+
   // --- Gestación: secado (mes 7) y parto esperado (vacona o vaca) ---
-  if (puedeGestar(bovino.categoria) && bovino.fecha_inseminacion) {
-    const fechaSecado = sumarDias(bovino.fecha_inseminacion, DIA_SECADO_GESTACION);
-    const fechaPartoEsperado = sumarDias(bovino.fecha_inseminacion, DIA_PARTO_ESPERADO);
+  if (puedeGestar(bovino.categoria) && inseminacion) {
+    const fechaSecado = sumarDias(inseminacion.fecha, DIA_SECADO_GESTACION);
+    const fechaPartoEsperado = sumarDias(inseminacion.fecha, DIA_PARTO_ESPERADO);
     eventos.push({
       tipo: 'secado',
       etapa: 'secado',
       etiqueta: 'Secar y separar (mes 7 de gestación)',
       sugerido: null,
       fecha: fechaSecado,
-      completado: yaAplicado('secado', bovino.fecha_inseminacion),
+      completado: yaAplicado('secado', inseminacion.fecha),
     });
     eventos.push({
       tipo: 'parto_esperado',
@@ -164,8 +202,8 @@ export function calcularEventos(bovino, aplicaciones) {
     .sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
 }
 
-export function proximoEvento(bovino, aplicaciones) {
-  const eventos = calcularEventos(bovino, aplicaciones);
+export function proximoEvento(bovino, aplicaciones, inseminaciones = []) {
+  const eventos = calcularEventos(bovino, aplicaciones, inseminaciones);
   return eventos[0] || null;
 }
 

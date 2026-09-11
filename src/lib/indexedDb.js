@@ -53,3 +53,17 @@ db.version(6).stores({
   eventosBloque: 'id, bloque_id',
   pendientes: '++id',
 });
+
+db.version(7).stores({
+  produccion: 'fecha',
+  metas: 'mes',
+  bovinos: 'id, codigo, madre_id',
+  aplicaciones: 'id, bovino_id',
+  partos: 'id, madre_id',
+  inseminaciones: 'id, bovino_id',
+  finanzas: 'id, tipo, fecha',
+  finanzasConfig: 'id',
+  bloques: 'id',
+  eventosBloque: 'id, bloque_id',
+  pendientes: '++id',
+});

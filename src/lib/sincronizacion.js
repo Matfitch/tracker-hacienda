@@ -48,6 +48,12 @@ export async function sincronizarPendientes() {
         } else if (item.tipo === 'eliminar_parto') {
           const { error } = await supabase.from('partos').delete().eq('id', item.id);
           if (error) throw error;
+        } else if (item.tipo === 'inseminacion') {
+          const { error } = await supabase.from('inseminaciones').upsert(item.registro);
+          if (error) throw error;
+        } else if (item.tipo === 'eliminar_inseminacion') {
+          const { error } = await supabase.from('inseminaciones').delete().eq('id', item.id);
+          if (error) throw error;
         } else if (item.tipo === 'finanza') {
           const { error } = await supabase.from('finanzas_movimientos').upsert(item.registro);
           if (error) throw error;

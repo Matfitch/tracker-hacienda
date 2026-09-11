@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import { Search, Plus, AlertTriangle, Check, ArrowLeft, Syringe, Heart, Camera, Image as ImageIcon, Printer } from "lucide-react";
 import { useBovinos } from "../hooks/useBovinos";
-import { calcularEventos, proximoEvento, hoyISO, CATEGORIAS, infoCategoria, tiempoGestacion } from "../lib/protocolos";
+import { calcularEventos, proximoEvento, hoyISO, CATEGORIAS, infoCategoria, tiempoGestacion, inseminacionActiva, historialInseminaciones, inseminacionProgramada } from "../lib/protocolos";
 import { imprimir } from "../lib/imprimir";
 
 // Redimensiona y comprime la imagen en el propio navegador antes de
@@ -146,6 +146,17 @@ function infoEstado(estado, sexo) {
   return lista.find((e) => e.value === estado) || lista[0];
 }
 
+const RESULTADOS_INSEMINACION = {
+  programada: { label: "Programada", color: "#C68A3E" },
+  pendiente: { label: "Pendiente", color: "#C68A3E" },
+  confirmada: { label: "Confirmada (parió)", color: "#3C7A4B" },
+  repite_celo: { label: "Repitió celo", color: "#B23A2E" },
+  aborto: { label: "Aborto", color: "#B23A2E" },
+};
+function infoResultadoInseminacion(resultado) {
+  return RESULTADOS_INSEMINACION[resultado] || RESULTADOS_INSEMINACION.pendiente;
+}
+
 function edadTexto(fechaNacimiento) {
   if (!fechaNacimiento) return "edad desconocida";
   const hoy = new Date();
@@ -195,10 +206,14 @@ export default function Bovinos() {
     bovinos,
     aplicaciones,
     partos,
+    inseminaciones,
     cargando,
     guardarBovino,
     registrarAplicacion,
     registrarParto,
+    registrarInseminacion,
+    actualizarInseminacion,
+    eliminarInseminacion,
     eliminarBovino,
     eliminarAplicacion,
     eliminarParto,
@@ -221,14 +236,14 @@ export default function Bovinos() {
     }
     if (q) lista = lista.filter((b) => b.codigo?.toLowerCase().includes(q) || b.nombre?.toLowerCase().includes(q));
     return lista
-      .map((b) => ({ b, prox: proximoEvento(b, aplicaciones) }))
+      .map((b) => ({ b, prox: proximoEvento(b, aplicaciones, inseminaciones) }))
       .sort((x, y) => {
         const ex = x.prox?.estado === "vencido" ? 0 : x.prox?.estado === "hoy" ? 1 : 2;
         const ey = y.prox?.estado === "vencido" ? 0 : y.prox?.estado === "hoy" ? 1 : 2;
         if (ex !== ey) return ex - ey;
         return (x.prox?.fecha || "9999") < (y.prox?.fecha || "9999") ? -1 : 1;
       });
-  }, [bovinos, aplicaciones, busqueda, grupo]);
+  }, [bovinos, aplicaciones, inseminaciones, busqueda, grupo]);
 
   const animalSeleccionado = bovinos.find((b) => b.id === seleccionado);
 
@@ -239,11 +254,15 @@ export default function Bovinos() {
         bovinos={bovinos}
         aplicaciones={aplicaciones}
         partos={partos}
+        inseminaciones={inseminaciones}
         onVolver={() => setSeleccionado(null)}
         onIrA={(id) => setSeleccionado(id)}
         onGuardarBovino={guardarBovino}
         onRegistrarAplicacion={registrarAplicacion}
         onRegistrarParto={registrarParto}
+        onRegistrarInseminacion={registrarInseminacion}
+        onActualizarInseminacion={actualizarInseminacion}
+        onEliminarInseminacion={eliminarInseminacion}
         onEliminarBovino={async (id) => {
           await eliminarBovino(id);
           setSeleccionado(null);
@@ -451,17 +470,20 @@ function FormNuevoAnimal({ onCancelar, onGuardar }) {
   );
 }
 
-function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, onGuardarBovino, onRegistrarAplicacion, onRegistrarParto, onEliminarBovino, onEliminarAplicacion, onEliminarParto }) {
-  const eventos = calcularEventos(bovino, aplicaciones);
+function FichaAnimal({ bovino, bovinos, aplicaciones, partos, inseminaciones, onVolver, onIrA, onGuardarBovino, onRegistrarAplicacion, onRegistrarParto, onRegistrarInseminacion, onActualizarInseminacion, onEliminarInseminacion, onEliminarBovino, onEliminarAplicacion, onEliminarParto }) {
+  const eventos = calcularEventos(bovino, aplicaciones, inseminaciones);
   const historialAplicaciones = aplicaciones.filter((a) => a.bovino_id === bovino.id).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
   const historialPartos = partos.filter((p) => p.madre_id === bovino.id).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  const inseminacionesAnimal = historialInseminaciones(bovino.id, inseminaciones);
+  const inseminacionVigente = inseminacionActiva(bovino.id, inseminaciones);
   const info = infoCategoria(bovino.categoria);
 
   const madre = bovino.madre_id ? bovinos.find((b) => b.id === bovino.madre_id) : null;
   const hermanos = bovino.madre_id ? bovinos.filter((b) => b.madre_id === bovino.madre_id && b.id !== bovino.id) : [];
 
   const [registrando, setRegistrando] = useState(null);
-  const [editandoReproduccion, setEditandoReproduccion] = useState(false);
+  const [registrandoInseminacion, setRegistrandoInseminacion] = useState(false);
+  const [editandoInseminacionId, setEditandoInseminacionId] = useState(null);
   const [editandoCategoria, setEditandoCategoria] = useState(false);
   const [registrandoParto, setRegistrandoParto] = useState(false);
   const [editandoDatos, setEditandoDatos] = useState(false);
@@ -478,7 +500,7 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
             <ArrowLeft size={15} /> Volver
           </button>
           <button
-            onClick={() => imprimirFichaBovino(bovino, info, eventos, historialAplicaciones, historialPartos, madre, hermanos)}
+            onClick={() => imprimirFichaBovino(bovino, info, eventos, historialAplicaciones, historialPartos, madre, hermanos, inseminacionVigente)}
             style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "1px solid #4A6B4C", color: "#B8CBB9", fontFamily: "system-ui, sans-serif", fontSize: "0.75rem", cursor: "pointer", padding: "0.3rem 0.6rem", borderRadius: 6 }}
           >
             <Printer size={14} /> Imprimir
@@ -669,7 +691,19 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
                   </div>
                   {ev.sugerido && <div style={{ fontSize: "0.72rem", color: "#7A7160", marginTop: "0.1rem" }}>{ev.sugerido}</div>}
                 </div>
-                {!ev.informativo && (
+                {!ev.informativo && ev.tipo === "inseminacion_programada" && (
+                  <button
+                    onClick={() => {
+                      if (!window.confirm("¿Confirmar que esta inseminación ya se realizó?")) return;
+                      const registro = inseminacionesAnimal.find((i) => i.id === ev.inseminacionId);
+                      if (registro) onActualizarInseminacion({ ...registro, resultado: "pendiente" });
+                    }}
+                    style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", fontWeight: 600, color: "#F5F0E3", background: "#2F4B3C", border: "none", borderRadius: 6, padding: "0.3rem 0.6rem", cursor: "pointer", flexShrink: 0 }}
+                  >
+                    Ya se realizó
+                  </button>
+                )}
+                {!ev.informativo && ev.tipo !== "inseminacion_programada" && (
                   <button onClick={() => setRegistrando(ev)} style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", fontWeight: 600, color: "#F5F0E3", background: "#2F4B3C", border: "none", borderRadius: 6, padding: "0.3rem 0.6rem", cursor: "pointer", flexShrink: 0 }}>
                     Registrar
                   </button>
@@ -695,33 +729,89 @@ function FichaAnimal({ bovino, bovinos, aplicaciones, partos, onVolver, onIrA, o
           <section style={{ background: "#FFFDF7", borderRadius: 14, padding: "1.1rem 1.25rem", marginTop: "1rem", border: "1px solid #E7DFC9" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.6rem" }}>
               <h2 style={{ fontSize: "0.95rem", margin: 0, color: "#2F4B3C" }}>Reproducción</h2>
-              <button onClick={() => setEditandoReproduccion((v) => !v)} style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", color: "#6B4A32", background: "#F4EEDB", border: "1px dashed #C68A3E", borderRadius: 6, padding: "0.2rem 0.5rem", cursor: "pointer" }}>
-                {editandoReproduccion ? "Cerrar" : "Inseminación ✎"}
+              <button onClick={() => setRegistrandoInseminacion((v) => !v)} style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", color: "#6B4A32", background: "#F4EEDB", border: "1px dashed #C68A3E", borderRadius: 6, padding: "0.2rem 0.5rem", cursor: "pointer" }}>
+                {registrandoInseminacion ? "Cerrar" : "+ Inseminación"}
               </button>
             </div>
 
             <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.85rem", color: "#4A4132", lineHeight: 1.7 }}>
               <div>Partos registrados: {historialPartos.length}</div>
-              <div>Inseminación (gestación actual): {bovino.fecha_inseminacion || "— sin registrar —"}</div>
-              {bovino.fecha_inseminacion && (() => {
-                const g = tiempoGestacion(bovino.fecha_inseminacion);
-                return (
-                  <div style={{ color: "#2F4B3C", fontWeight: 600 }}>
-                    Tiempo de gestación: {g.meses} mes{g.meses === 1 ? "" : "es"} y {g.dias} día{g.dias === 1 ? "" : "s"}
+              {inseminacionVigente ? (
+                <>
+                  <div>
+                    Inseminación vigente: {inseminacionVigente.fecha}
+                    {inseminacionVigente.pajuela_codigo || inseminacionVigente.pajuela_nombre ? (
+                      <> — pajuela {inseminacionVigente.pajuela_codigo}{inseminacionVigente.pajuela_codigo && inseminacionVigente.pajuela_nombre ? " · " : ""}{inseminacionVigente.pajuela_nombre}</>
+                    ) : null}
                   </div>
-                );
-              })()}
+                  {(() => {
+                    const g = tiempoGestacion(inseminacionVigente.fecha);
+                    return (
+                      <div style={{ color: "#2F4B3C", fontWeight: 600 }}>
+                        Tiempo de gestación: {g.meses} mes{g.meses === 1 ? "" : "es"} y {g.dias} día{g.dias === 1 ? "" : "s"}
+                      </div>
+                    );
+                  })()}
+                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.4rem" }}>
+                    <button
+                      onClick={() => { if (window.confirm("¿Marcar que esta vaca repitió celo? Se cerrará esta inseminación y podrás registrar una nueva.")) onActualizarInseminacion({ ...inseminacionVigente, resultado: "repite_celo" }); }}
+                      style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", fontWeight: 600, color: "#B23A2E", background: "transparent", border: "1px solid #E2B4AC", borderRadius: 6, padding: "0.25rem 0.55rem", cursor: "pointer" }}
+                    >
+                      Repitió celo
+                    </button>
+                    <button
+                      onClick={() => { if (window.confirm("¿Marcar esta gestación como aborto? Se cerrará esta inseminación y podrás registrar una nueva.")) onActualizarInseminacion({ ...inseminacionVigente, resultado: "aborto" }); }}
+                      style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.72rem", fontWeight: 600, color: "#B23A2E", background: "transparent", border: "1px solid #E2B4AC", borderRadius: 6, padding: "0.25rem 0.55rem", cursor: "pointer" }}
+                    >
+                      Aborto
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div>Sin inseminación vigente.</div>
+              )}
             </div>
 
-            {editandoReproduccion && (
-              <div style={{ marginTop: "0.7rem" }}>
-                <label style={labelStyle}>Fecha de inseminación</label>
-                <input
-                  type="date"
-                  style={inputStyle}
-                  value={bovino.fecha_inseminacion || ""}
-                  onChange={(e) => onGuardarBovino({ ...bovino, fecha_inseminacion: e.target.value || null })}
-                />
+            {registrandoInseminacion && (
+              <InseminacionForm
+                onCancelar={() => setRegistrandoInseminacion(false)}
+                onGuardar={async (datos) => {
+                  await onRegistrarInseminacion({ bovino_id: bovino.id, ...datos });
+                  setRegistrandoInseminacion(false);
+                }}
+              />
+            )}
+
+            {inseminacionesAnimal.length > 0 && (
+              <div style={{ marginTop: "0.9rem", paddingTop: "0.8rem", borderTop: "1px solid #F1EBD8" }}>
+                <div style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.78rem", color: "#6B4A32", marginBottom: "0.4rem" }}>
+                  Historial de inseminaciones
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                  {inseminacionesAnimal.map((i) =>
+                    editandoInseminacionId === i.id ? (
+                      <InseminacionForm
+                        key={i.id}
+                        inicial={i}
+                        onCancelar={() => setEditandoInseminacionId(null)}
+                        onGuardar={async (datos) => { await onActualizarInseminacion({ ...i, ...datos }); setEditandoInseminacionId(null); }}
+                      />
+                    ) : (
+                      <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", padding: "0.4rem 0.6rem", background: "#F4EEDB", borderRadius: 6 }}>
+                        <span>
+                          {i.fecha}
+                          {i.pajuela_codigo || i.pajuela_nombre ? <> · {i.pajuela_codigo} {i.pajuela_nombre}</> : null}
+                          {" · "}
+                          <span style={{ color: infoResultadoInseminacion(i.resultado).color, fontWeight: 600 }}>{infoResultadoInseminacion(i.resultado).label}</span>
+                        </span>
+                        <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+                          <button onClick={() => setEditandoInseminacionId(i.id)} style={{ background: "none", border: "none", color: "#6B4A32", textDecoration: "underline", cursor: "pointer", fontSize: "0.72rem", fontFamily: "system-ui, sans-serif" }}>Editar</button>
+                          <button onClick={() => { if (window.confirm("¿Eliminar este registro de inseminación?")) onEliminarInseminacion(i.id); }} style={{ background: "none", border: "none", color: "#B23A2E", cursor: "pointer", fontSize: "0.72rem", fontFamily: "system-ui, sans-serif" }}>Eliminar</button>
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             )}
 
@@ -1010,8 +1100,8 @@ function RegistrarPartoForm({ bovino, onCancelar, onGuardar }) {
   );
 }
 
-function imprimirFichaBovino(bovino, info, eventos, historialAplicaciones, historialPartos, madre, hermanos) {
-  const gestacion = bovino.fecha_inseminacion ? tiempoGestacion(bovino.fecha_inseminacion) : null;
+function imprimirFichaBovino(bovino, info, eventos, historialAplicaciones, historialPartos, madre, hermanos, inseminacionVigente) {
+  const gestacion = inseminacionVigente ? tiempoGestacion(inseminacionVigente.fecha) : null;
 
   const html = `
     <div class="encabezado">
@@ -1032,10 +1122,18 @@ function imprimirFichaBovino(bovino, info, eventos, historialAplicaciones, histo
     ${hermanos.length ? `<div class="campo"><strong>Hermanos/as:</strong> ${hermanos.map((h) => h.nombre || h.codigo).join(", ")}</div>` : ""}
 
     ${
-      bovino.fecha_ultimo_parto || bovino.fecha_inseminacion
+      bovino.fecha_ultimo_parto || inseminacionVigente
         ? `<h2>Reproducción</h2>
     ${bovino.fecha_ultimo_parto ? `<div class="campo"><strong>Última cría:</strong> ${bovino.fecha_ultimo_parto}</div>` : ""}
-    ${bovino.fecha_inseminacion ? `<div class="campo"><strong>Inseminación (gestación actual):</strong> ${bovino.fecha_inseminacion}</div>` : ""}
+    ${
+      inseminacionVigente
+        ? `<div class="campo"><strong>Inseminación vigente:</strong> ${inseminacionVigente.fecha}${
+            inseminacionVigente.pajuela_codigo || inseminacionVigente.pajuela_nombre
+              ? ` — pajuela ${inseminacionVigente.pajuela_codigo || ""} ${inseminacionVigente.pajuela_nombre || ""}`
+              : ""
+          }</div>`
+        : ""
+    }
     ${gestacion ? `<div class="campo"><strong>Tiempo de gestación:</strong> ${gestacion.meses} meses y ${gestacion.dias} días</div>` : ""}`
         : ""
     }
@@ -1069,4 +1167,51 @@ function imprimirFichaBovino(bovino, info, eventos, historialAplicaciones, histo
   `;
 
   imprimir(`Ficha - ${bovino.nombre || bovino.codigo}`, html);
+}
+
+function InseminacionForm({ inicial, onCancelar, onGuardar }) {
+  const [fecha, setFecha] = useState(inicial?.fecha || hoyISO());
+  const [pajuelaCodigo, setPajuelaCodigo] = useState(inicial?.pajuela_codigo || "");
+  const [pajuelaNombre, setPajuelaNombre] = useState(inicial?.pajuela_nombre || "");
+  const [notas, setNotas] = useState(inicial?.notas || "");
+
+  return (
+    <div style={{ background: "#F4EEDB", borderRadius: 10, padding: "0.9rem", marginTop: "0.8rem", display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+      <div>
+        <label style={labelStyle}>Fecha de inseminación</label>
+        <input type="date" style={inputStyle} value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        {!inicial && fecha > hoyISO() && (
+          <p style={{ fontFamily: "system-ui, sans-serif", fontSize: "0.7rem", color: "#8A6414", margin: "0.3rem 0 0" }}>
+            Fecha futura: quedará como "programada" hasta que confirmes que se realizó.
+          </p>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Código de pajuela</label>
+          <input style={inputStyle} value={pajuelaCodigo} onChange={(e) => setPajuelaCodigo(e.target.value)} placeholder="ej. 007HO123" />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>Toro / raza</label>
+          <input style={inputStyle} value={pajuelaNombre} onChange={(e) => setPajuelaNombre(e.target.value)} placeholder="ej. Holstein" />
+        </div>
+      </div>
+      <div>
+        <label style={labelStyle}>Notas (opcional)</label>
+        <input style={inputStyle} value={notas} onChange={(e) => setNotas(e.target.value)} />
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem" }}>
+        <button onClick={onCancelar} style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", padding: "0.5rem", borderRadius: 8, border: "1px solid #C68A3E", background: "transparent", color: "#6B4A32", cursor: "pointer" }}>
+          Cancelar
+        </button>
+        <button
+          disabled={!fecha}
+          onClick={() => onGuardar({ fecha, pajuela_codigo: pajuelaCodigo, pajuela_nombre: pajuelaNombre, notas })}
+          style={{ flex: 1, fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", fontWeight: 600, padding: "0.5rem", borderRadius: 8, border: "none", background: !fecha ? "#C9C2AC" : "#2F4B3C", color: "#F5F0E3", cursor: !fecha ? "not-allowed" : "pointer" }}
+        >
+          Guardar
+        </button>
+      </div>
+    </div>
+  );
 }
