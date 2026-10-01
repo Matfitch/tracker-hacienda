@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Sprout, Plus, ArrowLeft, Leaf, Beef, Clock, Wheat } from "lucide-react";
+import { Sprout, Plus, ArrowLeft, Leaf, Beef, Clock, Wheat, Printer } from "lucide-react";
 import { useBloques } from "../hooks/useBloques";
 import { estadoActual, historialPastoreos, historialFertilizaciones, historialSiembras, hoyISO } from "../lib/pastoreo";
+import { imprimir } from "../lib/imprimir";
 
 const inputStyle = {
   width: "100%",
@@ -199,9 +200,17 @@ function FichaBloque({ bloque, eventos, onVolver, onGuardarBloque, onEliminarBlo
   return (
     <div style={{ minHeight: "100vh", background: "#F5F0E3", fontFamily: "'Iowan Old Style', Georgia, serif", color: "#2A241C", paddingBottom: "3rem" }}>
       <header style={{ background: "#2F4B3C", color: "#F5F0E3", padding: "1.25rem 1.25rem 1.5rem", borderBottom: "3px solid #C68A3E" }}>
-        <button onClick={onVolver} style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "none", color: "#B8CBB9", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", cursor: "pointer", padding: 0, marginBottom: "0.6rem" }}>
-          <ArrowLeft size={15} /> Volver
-        </button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <button onClick={onVolver} style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "none", color: "#B8CBB9", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", cursor: "pointer", padding: 0, marginBottom: "0.6rem" }}>
+            <ArrowLeft size={15} /> Volver
+          </button>
+          <button
+            onClick={() => imprimirFichaBloque(bloque, estadoActual(bloque, eventos), siembras, pastoreos, fertilizaciones)}
+            style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "1px solid #4A6B4C", color: "#B8CBB9", fontFamily: "system-ui, sans-serif", fontSize: "0.75rem", cursor: "pointer", padding: "0.3rem 0.6rem", borderRadius: 6 }}
+          >
+            <Printer size={14} /> Imprimir
+          </button>
+        </div>
         <h1 style={{ fontSize: "1.4rem", fontWeight: 600, margin: 0, color: "#F5F0E3" }}>{bloque.nombre}</h1>
         {bloque.area_hectareas ? (
           <p style={{ margin: "0.2rem 0 0", fontFamily: "system-ui, sans-serif", fontSize: "0.8rem", color: "#B8CBB9" }}>{bloque.area_hectareas} hectáreas</p>
@@ -573,4 +582,48 @@ function PastoreoEditForm({ periodo, onCancelar, onGuardar }) {
       </div>
     </div>
   );
+}
+
+function imprimirFichaBloque(bloque, info, siembras, pastoreos, fertilizaciones) {
+  const badge = badgeEstado(info);
+
+  const html = `
+    <h1>${bloque.nombre}</h1>
+    <div class="subtitulo">${bloque.area_hectareas ? `${bloque.area_hectareas} hectáreas · ` : ""}${badge.texto}</div>
+
+    <h2>Datos del bloque</h2>
+    <div class="campo"><strong>Nombre:</strong> ${bloque.nombre}</div>
+    <div class="campo"><strong>Área:</strong> ${bloque.area_hectareas ? `${bloque.area_hectareas} ha` : "—"}</div>
+    <div class="campo"><strong>Ventana para pastorear tras siembra:</strong> ${bloque.dias_min_pastoreo ?? 61}-${bloque.dias_max_pastoreo ?? 75} días</div>
+    ${bloque.notas ? `<div class="campo"><strong>Notas:</strong> ${bloque.notas}</div>` : ""}
+
+    <h2>Historial de siembras</h2>
+    ${
+      siembras.length === 0
+        ? `<div class="campo">Sin registros.</div>`
+        : `<table><thead><tr><th>Fecha</th><th>Especie</th><th>Notas</th></tr></thead><tbody>
+        ${siembras.map((s) => `<tr><td>${s.fecha}</td><td>${s.especie || "—"}</td><td>${s.notas || "—"}</td></tr>`).join("")}
+      </tbody></table>`
+    }
+
+    <h2>Historial de pastoreos</h2>
+    ${
+      pastoreos.length === 0
+        ? `<div class="campo">Sin registros.</div>`
+        : `<table><thead><tr><th>Entrada</th><th>Salida</th><th>Días</th></tr></thead><tbody>
+        ${pastoreos.map((p) => `<tr><td>${p.inicio}</td><td>${p.fin || "en curso"}</td><td>${p.dias}</td></tr>`).join("")}
+      </tbody></table>`
+    }
+
+    <h2>Historial de fertilizaciones</h2>
+    ${
+      fertilizaciones.length === 0
+        ? `<div class="campo">Sin registros.</div>`
+        : `<table><thead><tr><th>Fecha</th><th>Productos</th><th>Notas</th></tr></thead><tbody>
+        ${fertilizaciones.map((f) => `<tr><td>${f.fecha}</td><td>${f.productos || "—"}</td><td>${f.notas || "—"}</td></tr>`).join("")}
+      </tbody></table>`
+    }
+  `;
+
+  imprimir(`Bloque - ${bloque.nombre}`, html);
 }
